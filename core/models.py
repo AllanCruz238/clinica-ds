@@ -1,10 +1,4 @@
-# This is an auto-generated Django model module.
-# You'll have to do the following manually to clean this up:
-#   * Rearrange models' order
-#   * Make sure each model has one field with primary_key=True
-#   * Make sure each ForeignKey and OneToOneField has `on_delete` set to the desired behavior
-#   * Remove `managed = False` lines if you wish to allow Django to create, modify, and delete the table
-# Feel free to rename the models, but don't rename db_table values or field names.
+
 from django.db import models
 
 
@@ -18,7 +12,7 @@ class Auditoria(models.Model):
     fecha_evento = models.DateTimeField(blank=True, null=True)
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'auditoria'
 
 
@@ -43,7 +37,7 @@ class Citas(models.Model):
         return f"Cita {self.id_cita} - {paciente} - {fecha}"
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'citas'
 
 
@@ -62,7 +56,7 @@ class Doctores(models.Model):
         return f"Doctor {self.id_doctor}"
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'doctores'
 
 
@@ -76,7 +70,7 @@ class Especialidades(models.Model):
         return self.nombre_especialidad
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'especialidades'
 
 
@@ -90,7 +84,7 @@ class EstadosCita(models.Model):
         return self.nombre_estado
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'estados_cita'
 
 
@@ -104,7 +98,7 @@ class MotivosConsulta(models.Model):
         return self.nombre_motivo
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'motivos_consulta'
 
 
@@ -119,7 +113,7 @@ class NotasClinicas(models.Model):
     fecha_nota = models.DateTimeField(blank=True, null=True)
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'notas_clinicas'
 
 
@@ -143,7 +137,7 @@ class Pacientes(models.Model):
         return f"{self.nombres or ''} {self.apellidos or ''}".strip()
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'pacientes'
 
 
@@ -158,7 +152,7 @@ class Pagos(models.Model):
     observaciones = models.TextField(blank=True, null=True)
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'pagos'
 
 
@@ -174,7 +168,7 @@ class Recordatorios(models.Model):
     estado_envio = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'recordatorios'
 
 
@@ -188,7 +182,7 @@ class Roles(models.Model):
         return self.nombre_rol or f"Rol {self.id_rol}"
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'roles'
 
 
@@ -198,7 +192,7 @@ class TiposPago(models.Model):
     activo = models.IntegerField(blank=True, null=True)
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'tipos_pago'
 
 
@@ -219,7 +213,7 @@ class Usuarios(models.Model):
         return f"{self.nombres or ''} {self.apellidos or ''} ({self.username})".strip()
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'usuarios'
 
 
@@ -241,5 +235,5 @@ class ConfiguracionClinica(models.Model):
         return self.nombre_clinica
 
     class Meta:
-        managed = False
+        #managed = False
         db_table = 'configuracion_clinica'
