@@ -84,4 +84,5 @@ urlpatterns = [
     path('recordatorios/enviar-correo/', views.enviar_recordatorios_correo, name='enviar_recordatorios_correo'),
     path('recordatorios/whatsapp/', views.listar_recordatorios_whatsapp, name='listar_recordatorios_whatsapp'),
     path('recordatorios/whatsapp/<int:id_recordatorio>/abrir/', views.abrir_recordatorio_whatsapp, name='abrir_recordatorio_whatsapp'),
+    path('recordatorios/whatsapp/cita/<int:id_cita>/abrir/', views.abrir_whatsapp_cita, name='abrir_whatsapp_cita'),
 ]

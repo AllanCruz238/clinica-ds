@@ -1952,34 +1952,97 @@ def generar_word_paciente(request, id_paciente):
     return response
 
 
+
+def _hora_como_time(valor):
+    if isinstance(valor, time):
+        return valor
+
+    if isinstance(valor, timedelta):
+        segundos = int(valor.total_seconds())
+        horas = segundos // 3600
+        minutos = (segundos % 3600) // 60
+        segundos = segundos % 60
+        return time(horas, minutos, segundos)
+
+    if isinstance(valor, str):
+        partes = valor.split(':')
+        horas = int(partes[0]) if len(partes) > 0 and partes[0] else 8
+        minutos = int(partes[1]) if len(partes) > 1 and partes[1] else 0
+        segundos = int(partes[2]) if len(partes) > 2 and partes[2] else 0
+        return time(horas, minutos, segundos)
+
+    return time(8, 0, 0)
+
+
+def _rango_recordatorios_dashboard():
+    hoy = timezone.localdate()
+    manana = hoy + timedelta(days=1)
+    return hoy, manana
+
+
+def _nombre_paciente_cita(cita):
+    if not cita or not cita.id_paciente:
+        return 'Paciente'
+    return f"{cita.id_paciente.nombres or ''} {cita.id_paciente.apellidos or ''}".strip()
+
+
+def _mensaje_cita_recordatorio(cita):
+    hora_inicio = _hora_como_time(cita.hora_inicio)
+    nombre = _nombre_paciente_cita(cita)
+    modalidad = cita.modalidad or 'No registrada'
+    motivo = cita.razon_consulta_detalle or 'Consulta médica'
+    return (
+        f"Hola {nombre}, le recordamos su cita médica programada para el "
+        f"{cita.fecha_cita} a las {hora_inicio.strftime('%H:%M')}. "
+        f"Modalidad: {modalidad}. Motivo: {motivo}. Clínica Nubnest."
+    )
+
+
+def _citas_recordatorio_qs():
+    hoy, manana = _rango_recordatorios_dashboard()
+    return Citas.objects.select_related(
+        'id_paciente',
+        'id_estado_cita',
+        'id_doctor__id_usuario'
+    ).filter(
+        fecha_cita__gte=hoy,
+        fecha_cita__lte=manana
+    ).exclude(
+        id_estado_cita__nombre_estado__iexact='Cancelada'
+    ).exclude(
+        id_estado_cita__nombre_estado__iexact='Cancelado'
+    ).order_by('fecha_cita', 'hora_inicio')
+
+
+@rol_requerido(['Administrador', 'Recepción'])
 def enviar_recordatorios_correo(request):
     enviados = 0
     errores = 0
+    omitidos = 0
 
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT 
-                id_recordatorio,
-                destinatario,
-                mensaje
-            FROM recordatorios
-            WHERE canal = 'correo'
-              AND estado_envio = 'pendiente'
-              AND fecha_programada <= NOW()
-        """)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id_recordatorio, destinatario, mensaje
+                FROM recordatorios
+                WHERE canal = %s
+                  AND estado_envio = %s
+                ORDER BY fecha_programada ASC
+            """, ['correo', 'pendiente'])
+            recordatorios = cursor.fetchall()
+    except Exception as e:
+        return HttpResponse(f"Error consultando recordatorios de correo: {str(e)}", status=500)
 
-        recordatorios = cursor.fetchall()
-
-    for recordatorio in recordatorios:
-        id_recordatorio = recordatorio[0]
-        destinatario = recordatorio[1]
-        mensaje = recordatorio[2]
+    for id_recordatorio, destinatario, mensaje in recordatorios:
+        if not destinatario:
+            omitidos += 1
+            continue
 
         try:
             send_mail(
-                subject="Recordatorio de cita médica",
+                subject='Recordatorio de cita médica',
                 message=mensaje,
-                from_email="clinica@clinica-ds.com",
+                from_email='clinica@nubnest.com',
                 recipient_list=[destinatario],
                 fail_silently=False,
             )
@@ -1987,49 +2050,51 @@ def enviar_recordatorios_correo(request):
             with connection.cursor() as cursor:
                 cursor.execute("""
                     UPDATE recordatorios
-                    SET estado_envio = 'enviado'
+                    SET estado_envio = %s
                     WHERE id_recordatorio = %s
-                """, [id_recordatorio])
+                """, ['enviado', id_recordatorio])
 
             enviados += 1
-
         except Exception as e:
             errores += 1
-            print("ERROR AL ENVIAR CORREO:", e)
+            print('ERROR AL ENVIAR CORREO:', e)
 
     return HttpResponse(
-        f"Recordatorios procesados. Enviados: {enviados}. Errores: {errores}."
+        f"Recordatorios procesados. Enviados: {enviados}. Omitidos: {omitidos}. Errores: {errores}."
     )
 
 
-
 def limpiar_numero_whatsapp(numero):
-    numero = str(numero)
+    numero = str(numero or '')
     numero = re.sub(r'\D', '', numero)
-
-    # Si es número de Guatemala de 8 dígitos, agregar código de país 502
     if len(numero) == 8:
-        numero = "502" + numero
-
+        numero = '502' + numero
     return numero
 
 
 @rol_requerido(['Administrador', 'Recepción'])
 def listar_recordatorios_whatsapp(request):
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT 
-                id_recordatorio,
-                destinatario,
-                mensaje,
-                fecha_programada
-            FROM recordatorios
-            WHERE canal = 'whatsapp'
-              AND estado_envio = 'pendiente'
-            ORDER BY fecha_programada ASC
-        """)
+    """
+    Muestra WhatsApp para citas de hoy y mañana.
+    Si ya existen recordatorios pendientes en la tabla recordatorios, los muestra.
+    Si no existen, igual muestra enlaces manuales directos desde las citas próximas.
+    """
+    pendientes = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id_recordatorio, destinatario, mensaje, fecha_programada
+                FROM recordatorios
+                WHERE canal = %s
+                  AND estado_envio = %s
+                ORDER BY fecha_programada ASC
+            """, ['whatsapp', 'pendiente'])
+            pendientes = cursor.fetchall()
+    except Exception as e:
+        print('ERROR CONSULTANDO WHATSAPP PENDIENTES:', e)
+        pendientes = []
 
-        recordatorios = cursor.fetchall()
+    citas = list(_citas_recordatorio_qs())
 
     html = """
     <!DOCTYPE html>
@@ -2038,89 +2103,64 @@ def listar_recordatorios_whatsapp(request):
         <meta charset="UTF-8">
         <title>Recordatorios WhatsApp</title>
         <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: #f4f6f8;
-                padding: 30px;
-            }
-
-            h1 {
-                color: #111827;
-            }
-
-            .card {
-                background: white;
-                border-radius: 12px;
-                padding: 18px;
-                margin-bottom: 15px;
-                box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-            }
-
-            .numero {
-                font-weight: bold;
-                color: #111827;
-                margin-bottom: 8px;
-            }
-
-            .fecha {
-                color: #6b7280;
-                font-size: 14px;
-                margin-bottom: 10px;
-            }
-
-            .mensaje {
-                background: #f9fafb;
-                padding: 12px;
-                border-radius: 8px;
-                margin-bottom: 12px;
-                white-space: pre-wrap;
-            }
-
-            .btn {
-                display: inline-block;
-                background: #16a34a;
-                color: white;
-                text-decoration: none;
-                padding: 10px 14px;
-                border-radius: 8px;
-                font-weight: bold;
-            }
-
-            .empty {
-                background: white;
-                padding: 20px;
-                border-radius: 12px;
-                color: #374151;
-            }
+            body { font-family: Arial, sans-serif; background:#08111f; color:#ddeeff; padding:24px; }
+            h1 { color:#ddeeff; font-size:24px; margin-bottom:8px; }
+            .sub { color:#7fa0c3; margin-bottom:18px; }
+            .card { background:#0f1e36; border:1px solid rgba(45,212,191,.22); border-radius:14px; padding:16px; margin-bottom:14px; }
+            .numero { font-weight:bold; margin-bottom:6px; }
+            .fecha { color:#93b5d9; font-size:14px; margin-bottom:8px; }
+            .mensaje { background:#0a1628; padding:12px; border-radius:10px; margin-bottom:12px; white-space:pre-wrap; line-height:1.5; }
+            .btn { display:inline-block; background:#22c55e; color:#04110a; text-decoration:none; padding:10px 14px; border-radius:10px; font-weight:bold; margin-right:8px; }
+            .btn.secondary { background:#38bdf8; color:#06111f; }
+            .empty { background:#0f1e36; border:1px solid rgba(45,212,191,.22); padding:18px; border-radius:14px; color:#cfe3ff; }
+            hr { border:0; border-top:1px solid rgba(45,212,191,.18); margin:18px 0; }
         </style>
     </head>
     <body>
-        <h1>Recordatorios pendientes por WhatsApp</h1>
+        <h1>Recordatorios WhatsApp</h1>
+        <div class="sub">Citas de hoy y mañana. Puedes abrir WhatsApp manualmente desde cada botón.</div>
     """
 
-    if not recordatorios:
-        html += """
-        <div class="empty">
-            No hay recordatorios pendientes por WhatsApp.
-        </div>
-        """
-    else:
-        for recordatorio in recordatorios:
-            id_recordatorio = recordatorio[0]
-            destinatario = recordatorio[1]
-            mensaje = recordatorio[2]
-            fecha_programada = recordatorio[3]
+    total_mostrados = 0
 
+    if pendientes:
+        html += "<h3>Pendientes generados</h3>"
+        for id_recordatorio, destinatario, mensaje, fecha_programada in pendientes:
+            numero_limpio = limpiar_numero_whatsapp(destinatario)
+            wa_url = f"https://wa.me/{numero_limpio}?text={quote(str(mensaje))}"
             html += f"""
             <div class="card">
                 <div class="numero">Número: {destinatario}</div>
                 <div class="fecha">Fecha programada: {fecha_programada}</div>
                 <div class="mensaje">{mensaje}</div>
-                <a class="btn" target="_blank" href="/recordatorios/whatsapp/{id_recordatorio}/abrir/">
-                    Abrir WhatsApp
-                </a>
+                <a class="btn" target="_blank" href="{wa_url}">Abrir WhatsApp</a>
+                <a class="btn secondary" target="_blank" href="/recordatorios/whatsapp/{id_recordatorio}/abrir/">Abrir y marcar enviado</a>
             </div>
             """
+            total_mostrados += 1
+
+    html += "<h3>Citas de hoy y mañana</h3>"
+    for cita in citas:
+        if not cita.id_paciente or not cita.id_paciente.telefono:
+            continue
+        mensaje = _mensaje_cita_recordatorio(cita)
+        numero = cita.id_paciente.telefono
+        numero_limpio = limpiar_numero_whatsapp(numero)
+        wa_url = f"https://wa.me/{numero_limpio}?text={quote(str(mensaje))}"
+        hora_inicio = _hora_como_time(cita.hora_inicio)
+        html += f"""
+        <div class="card">
+            <div class="numero">Paciente: {_nombre_paciente_cita(cita)} | Número: {numero}</div>
+            <div class="fecha">Cita: {cita.fecha_cita} {hora_inicio.strftime('%H:%M')}</div>
+            <div class="mensaje">{mensaje}</div>
+            <a class="btn" target="_blank" href="{wa_url}">Enviar WhatsApp manual</a>
+            <a class="btn secondary" target="_blank" href="/recordatorios/whatsapp/cita/{cita.id_cita}/abrir/">Abrir y registrar</a>
+        </div>
+        """
+        total_mostrados += 1
+
+    if total_mostrados == 0:
+        html += '<div class="empty">No hay citas de hoy o mañana con teléfono registrado.</div>'
 
     html += """
     </body>
@@ -2132,79 +2172,91 @@ def listar_recordatorios_whatsapp(request):
 
 @rol_requerido(['Administrador', 'Recepción'])
 def abrir_recordatorio_whatsapp(request, id_recordatorio):
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT 
-                destinatario,
-                mensaje
-            FROM recordatorios
-            WHERE id_recordatorio = %s
-              AND canal = 'whatsapp'
-        """, [id_recordatorio])
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT destinatario, mensaje
+                FROM recordatorios
+                WHERE id_recordatorio = %s
+                  AND canal = %s
+            """, [id_recordatorio, 'whatsapp'])
+            recordatorio = cursor.fetchone()
 
-        recordatorio = cursor.fetchone()
+        if not recordatorio:
+            return HttpResponse('Recordatorio no encontrado', status=404)
 
-    if not recordatorio:
-        return HttpResponse("Recordatorio no encontrado", status=404)
+        destinatario, mensaje = recordatorio
+        numero_limpio = limpiar_numero_whatsapp(destinatario)
+        mensaje_codificado = quote(str(mensaje))
+        url_whatsapp = f"https://wa.me/{numero_limpio}?text={mensaje_codificado}"
 
-    destinatario = recordatorio[0]
-    mensaje = recordatorio[1]
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE recordatorios
+                SET estado_envio = %s
+                WHERE id_recordatorio = %s
+            """, ['enviado', id_recordatorio])
 
-    numero_limpio = limpiar_numero_whatsapp(destinatario)
-    mensaje_codificado = quote(str(mensaje))
+        return redirect(url_whatsapp)
+    except Exception as e:
+        return HttpResponse(f"Error abriendo WhatsApp: {str(e)}", status=500)
 
-    url_whatsapp = f"https://wa.me/{numero_limpio}?text={mensaje_codificado}"
 
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            UPDATE recordatorios
-            SET estado_envio = 'enviado'
-            WHERE id_recordatorio = %s
-        """, [id_recordatorio])
+@rol_requerido(['Administrador', 'Recepción'])
+def abrir_whatsapp_cita(request, id_cita):
+    cita = get_object_or_404(
+        Citas.objects.select_related('id_paciente', 'id_estado_cita'),
+        id_cita=id_cita
+    )
+
+    if not cita.id_paciente or not cita.id_paciente.telefono:
+        return HttpResponse('La cita no tiene teléfono de paciente registrado.', status=400)
+
+    mensaje = _mensaje_cita_recordatorio(cita)
+    numero_limpio = limpiar_numero_whatsapp(cita.id_paciente.telefono)
+    url_whatsapp = f"https://wa.me/{numero_limpio}?text={quote(str(mensaje))}"
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO recordatorios (
+                    id_cita,
+                    canal,
+                    tipo_recordatorio,
+                    destinatario,
+                    mensaje,
+                    fecha_programada,
+                    estado_envio
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, [
+                cita.id_cita,
+                'whatsapp',
+                'manual_dashboard',
+                cita.id_paciente.telefono,
+                mensaje,
+                timezone.now(),
+                'enviado'
+            ])
+    except Exception as e:
+        print('NO SE PUDO REGISTRAR WHATSAPP MANUAL:', e)
 
     return redirect(url_whatsapp)
 
 
-
 @rol_requerido(['Administrador', 'Recepción'])
 def generar_recordatorios_automaticos(request):
+    """
+    Genera recordatorios manuales para citas de hoy y mañana.
+    Se crean como pendientes desde ahora, para que los botones de correo/WhatsApp los encuentren de inmediato.
+    """
     creados = 0
     omitidos = 0
     errores = 0
 
-    def convertir_hora(valor):
-        if isinstance(valor, time):
-            return valor
-
-        if isinstance(valor, timedelta):
-            segundos = int(valor.total_seconds())
-            horas = segundos // 3600
-            minutos = (segundos % 3600) // 60
-            segundos = segundos % 60
-            return time(horas, minutos, segundos)
-
-        if isinstance(valor, str):
-            partes = valor.split(":")
-            horas = int(partes[0])
-            minutos = int(partes[1]) if len(partes) > 1 else 0
-            segundos = int(partes[2]) if len(partes) > 2 else 0
-            return time(horas, minutos, segundos)
-
-        return time(8, 0, 0)
-
     try:
-        hoy = timezone.localdate()
-
-        citas = Citas.objects.select_related(
-            'id_paciente',
-            'id_estado_cita'
-        ).filter(
-            fecha_cita__gte=hoy
-        ).exclude(
-            id_estado_cita__nombre_estado__iexact='Cancelada'
-        ).exclude(
-            id_estado_cita__nombre_estado__iexact='Cancelado'
-        ).order_by('fecha_cita', 'hora_inicio')
+        citas = _citas_recordatorio_qs()
+        fecha_programada = timezone.now()
 
         for cita in citas:
             try:
@@ -2212,51 +2264,14 @@ def generar_recordatorios_automaticos(request):
                     omitidos += 1
                     continue
 
-                hora_inicio = convertir_hora(cita.hora_inicio)
-                fecha_hora_cita = datetime.combine(cita.fecha_cita, hora_inicio)
-
-                if timezone.is_naive(fecha_hora_cita):
-                    fecha_hora_cita = timezone.make_aware(fecha_hora_cita, timezone.get_current_timezone())
-
-                nombre_completo = f"{cita.id_paciente.nombres or ''} {cita.id_paciente.apellidos or ''}".strip()
-
-                mensaje = (
-                    f"Hola {nombre_completo}, le recordamos su cita médica "
-                    f"programada para el {cita.fecha_cita} a las {hora_inicio.strftime('%H:%M')}. "
-                    f"Modalidad: {cita.modalidad if cita.modalidad else 'No registrada'}. "
-                    f"Motivo: {cita.razon_consulta_detalle if cita.razon_consulta_detalle else 'Consulta médica'}. "
-                    f"Clínica DS."
-                )
-
-                recordatorios = [
-                    {
-                        "canal": "correo",
-                        "tipo": "1_dia_antes",
-                        "destinatario": cita.id_paciente.correo,
-                        "fecha_programada": fecha_hora_cita - timedelta(days=1),
-                    },
-                    {
-                        "canal": "correo",
-                        "tipo": "3_horas_antes",
-                        "destinatario": cita.id_paciente.correo,
-                        "fecha_programada": fecha_hora_cita - timedelta(hours=3),
-                    },
-                    {
-                        "canal": "whatsapp",
-                        "tipo": "1_dia_antes",
-                        "destinatario": cita.id_paciente.telefono,
-                        "fecha_programada": fecha_hora_cita - timedelta(days=1),
-                    },
-                    {
-                        "canal": "whatsapp",
-                        "tipo": "3_horas_antes",
-                        "destinatario": cita.id_paciente.telefono,
-                        "fecha_programada": fecha_hora_cita - timedelta(hours=3),
-                    },
+                mensaje = _mensaje_cita_recordatorio(cita)
+                canales = [
+                    ('correo', 'manual_dashboard', cita.id_paciente.correo),
+                    ('whatsapp', 'manual_dashboard', cita.id_paciente.telefono),
                 ]
 
-                for r in recordatorios:
-                    if not r["destinatario"]:
+                for canal, tipo, destinatario in canales:
+                    if not destinatario:
                         omitidos += 1
                         continue
 
@@ -2267,8 +2282,8 @@ def generar_recordatorios_automaticos(request):
                             WHERE id_cita = %s
                               AND canal = %s
                               AND tipo_recordatorio = %s
-                        """, [cita.id_cita, r["canal"], r["tipo"]])
-
+                              AND estado_envio = %s
+                        """, [cita.id_cita, canal, tipo, 'pendiente'])
                         existe = cursor.fetchone()[0]
 
                     if existe:
@@ -2286,21 +2301,22 @@ def generar_recordatorios_automaticos(request):
                                 fecha_programada,
                                 estado_envio
                             )
-                            VALUES (%s, %s, %s, %s, %s, %s, 'pendiente')
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
                         """, [
                             cita.id_cita,
-                            r["canal"],
-                            r["tipo"],
-                            r["destinatario"],
+                            canal,
+                            tipo,
+                            destinatario,
                             mensaje,
-                            r["fecha_programada"]
+                            fecha_programada,
+                            'pendiente'
                         ])
 
                     creados += 1
 
             except Exception as e:
                 errores += 1
-                print("ERROR GENERANDO RECORDATORIO:", e)
+                print('ERROR GENERANDO RECORDATORIO:', e)
 
         return HttpResponse(
             f"Recordatorios generados. Creados: {creados}. Omitidos: {omitidos}. Errores: {errores}."
