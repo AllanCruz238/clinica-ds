@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acceso denegado | Clínica DS</title>
+
+  <style>
+
+    :root { --bg:#060d1b; --surface:#0a1628; --s2:#0f1e36; --bmd:rgba(45,212,191,.15); --accent:#2dd4bf; --a2:#38bdf8; --text:#ddeeff; --t2:#6b88a8; --red:#fb7185; --rbg:rgba(251,113,133,.1); --r:12px; --rl:18px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; display: flex; align-items: center; justify-content: center; padding: 20px; background-image: radial-gradient(ellipse at 50% 50%, rgba(251,113,133,.04) 0%, transparent 60%); }
+    .card { width: 100%; max-width: 480px; background: var(--surface); border: 1px solid rgba(251,113,133,.2); border-radius: var(--rl); padding: 36px 32px; text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,.5); }
+    h1 { color: var(--red); margin-bottom: 12px; font-size: 26px; font-family: 'Playfair Display', serif; letter-spacing: -.3px; }
+    p { color: var(--t2); line-height: 1.6; margin-bottom: 24px; font-size: 14px; }
+    .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    a { display: inline-block; text-decoration: none; padding: 10px 20px; border-radius: var(--r); background: linear-gradient(135deg,var(--accent),#0891b2); color: #040d1a; font-weight: 700; font-size: 13.5px; transition: all .18s; box-shadow: 0 2px 12px rgba(45,212,191,.2); }
+    a:hover { filter: brightness(1.1); box-shadow: 0 4px 20px rgba(45,212,191,.3); transform: translateY(-1px); }
+    .secondary { background: var(--s2); border: 1px solid var(--bmd); color: var(--text); box-shadow: none; }
+    .secondary:hover { filter: none; border-color: rgba(45,212,191,.3); }
+
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <div class="card">
+    <h1>Acceso denegado</h1>
+    <p>No tienes permisos para acceder a este módulo del sistema.</p>
+
+    <div class="actions">
+      <a href="/logout/">Volver al login</a>
+      <a href="/dashboard/" class="secondary">Ir al dashboard</a>
+    </div>
+  </div>
+</body>
+</html>

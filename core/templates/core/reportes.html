@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reportes | Clínica DS</title>
+
+  <style>
+    :root {
+      --bg:#060d1b; --surface:#0a1628; --s2:#0f1e36; --s3:#152640;
+      --border:rgba(45,212,191,.08); --bmd:rgba(45,212,191,.15); --bhi:rgba(45,212,191,.3);
+      --accent:#2dd4bf; --a2:#38bdf8; --glow:rgba(45,212,191,.13);
+      --text:#ddeeff; --t2:#6b88a8;
+      --green:#34d399; --red:#fb7185; --amber:#fbbf24; --r:12px; --rl:18px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
+    .layout { display: flex; min-height: 100vh; }
+
+    .sidebar { width: 250px; flex-shrink: 0; background: linear-gradient(180deg,#0a1628 0%,#060d1b 100%); border-right: 1px solid var(--bmd); padding: 24px 14px; display: flex; flex-direction: column; }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; padding: 0 6px; }
+    .brand-mark { width: 34px; height: 34px; flex-shrink: 0; background: linear-gradient(135deg,var(--accent),var(--a2)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #040d1a; font-weight: 800; line-height: 1; }
+    .brand-name { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
+    .sidebar a { display: block; text-decoration: none; color: var(--t2); padding: 9px 12px; border-radius: var(--r); margin-bottom: 3px; font-size: 13.5px; font-weight: 500; border-left: 3px solid transparent; transition: all .18s ease; }
+    .sidebar a:hover { background: var(--s3); color: var(--text); border-left-color: var(--bhi); }
+    .sidebar a.active { background: var(--glow); color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+    .sidebar a[href="/logout/"] { color: var(--red) !important; }
+
+    .main { flex: 1; padding: 28px; min-width: 0; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; gap: 16px; flex-wrap: wrap; }
+    .topbar h2 { font-size: 24px; font-weight: 700; letter-spacing: -.5px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items:center; }
+    .last-update { color: var(--t2); font-size: 12px; }
+
+    .btn { padding: 9px 18px; border: none; border-radius: var(--r); cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13.5px; font-weight: 700; background: linear-gradient(135deg,var(--accent),#0891b2); color: #040d1a; transition: all .18s; box-shadow: 0 2px 12px rgba(45,212,191,.2); text-decoration: none; display: inline-block; }
+    .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn.secondary { background: var(--s2); color: var(--text); border: 1px solid var(--bmd); box-shadow: none; }
+    .btn.word { background: linear-gradient(135deg,#3b82f6,#1d4ed8); color: #fff; }
+
+    .cards { display: grid; grid-template-columns: repeat(5,1fr); gap: 16px; margin-bottom: 18px; }
+    .card { background: linear-gradient(145deg,var(--s2),var(--surface)); border: 1px solid var(--bmd); border-radius: var(--rl); padding: 18px; position: relative; overflow: hidden; min-height: 105px; }
+    .card::after { content: ''; position: absolute; top: -16px; right: -16px; width: 64px; height: 64px; background: var(--glow); border-radius: 50%; }
+    .card h3 { font-size: 10.5px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: var(--t2); margin-bottom: 8px; }
+    .card p { font-size: 25px; font-weight: 800; color: var(--text); letter-spacing: -1px; }
+    .card small { color: var(--t2); font-size: 12px; }
+
+    .grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 18px; }
+    .panel { background: var(--surface); border: 1px solid var(--bmd); border-radius: var(--rl); padding: 18px; overflow: hidden; }
+    .panel.full { grid-column: 1 / -1; }
+    .panel h3 { color: var(--a2); font-size: 14px; font-weight: 800; margin-bottom: 14px; letter-spacing: -.2px; }
+    .chart-panel { min-height: 310px; }
+    canvas { width: 100%; height: 240px; display: block; background: rgba(15,30,54,.45); border: 1px solid var(--border); border-radius: var(--r); }
+
+    .table-wrap { overflow-x: auto; border-radius: var(--r); border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; min-width: 640px; }
+    thead { background: var(--s2); }
+    th, td { padding: 11px 13px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+    th { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; }
+    td { color: var(--text); }
+    tbody tr:hover { background: rgba(45,212,191,.03); }
+    .empty { color: var(--t2); padding: 12px; }
+    .monto { color: var(--green); font-weight: 800; }
+    .badge { display: inline-flex; align-items:center; justify-content:center; min-width: 70px; padding: 4px 10px; border-radius:999px; font-size:11.5px; font-weight:800; }
+    .badge.ok { background: rgba(52,211,153,.12); color: var(--green); }
+    .badge.off { background: rgba(251,113,133,.12); color: var(--red); }
+
+    @media (max-width: 1250px) { .cards { grid-template-columns: repeat(3,1fr); } }
+    @media (max-width: 950px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--bmd); }
+      .cards { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+      .main { padding: 18px; }
+    }
+
+    @media print {
+      .sidebar, .actions { display:none !important; }
+      .layout { display:block; }
+      body { background:white; color:black; }
+      .main { padding:0; }
+      .card, .panel { background:white; color:black; border:1px solid #bbb; box-shadow:none; }
+      th, td, .card p, .panel h3, .topbar h2 { color:black; }
+      canvas { display:none; }
+      .grid, .cards { display:block; }
+      .card, .panel { margin-bottom:14px; }
+    }
+  </style>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">✚</div>
+        <span class="brand-name">Clínica DS</span>
+      </div>
+      <a href="/dashboard/">Dashboard</a>
+      <a href="/pacientes/">Pacientes</a>
+      <a href="/citas/">Citas</a>
+      <a href="/pagos/">Pagos</a>
+      <a href="/notas/">Notas clínicas</a>
+      <a href="/doctores/">Doctores</a>
+      <a href="/usuarios/">Usuarios</a>
+      <a href="/roles/">Roles</a>
+      <a href="/reportes/" class="active">Reportes</a>
+      <a href="/configuracion/">Configuración</a>
+      <a href="/logout/" style="margin-top:30px;">Cerrar sesión</a>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h2>Reportes</h2>
+          <div class="last-update">Última actualización: <span id="ultimaActualizacion">-</span></div>
+        </div>
+        <div class="actions">
+          <a class="btn word" href="/reportes/word/">Generar Word</a>
+          <button class="btn secondary" onclick="window.print()">Imprimir / PDF</button>
+        </div>
+      </div>
+
+      <section class="cards">
+        <div class="card"><h3>Pacientes activos</h3><p id="totalPacientes">0</p><small id="totalPacientesGeneral">0 registrados</small></div>
+        <div class="card"><h3>Usuarios activos</h3><p id="usuariosActivos">0</p><small id="totalUsuarios">0 usuarios</small></div>
+        <div class="card"><h3>Doctores activos</h3><p id="doctoresActivos">0</p><small id="totalDoctores">0 doctores</small></div>
+        <div class="card"><h3>Total citas</h3><p id="totalCitas">0</p><small id="citasHoy">0 hoy</small></div>
+        <div class="card"><h3>Citas próximas</h3><p id="citasProximasTotal">0</p><small>futuras/no canceladas</small></div>
+        <div class="card"><h3>Ingresos totales</h3><p id="ingresosTotales">Q0.00</p><small id="totalPagos">0 pagos</small></div>
+        <div class="card"><h3>Ingresos del mes</h3><p id="pagosMes">Q0.00</p><small>mes actual</small></div>
+        <div class="card"><h3>Ingresos semanales</h3><p id="ingresosSemanales">Q0.00</p><small>últimos 7 días</small></div>
+        <div class="card"><h3>Ingresos potenciales</h3><p id="ingresosPotenciales">Q0.00</p><small id="citasFuturasPendientes">0 citas sin pago</small></div>
+        <div class="card"><h3>Cancelaciones</h3><p id="tasaCancelaciones">0%</p><small>tasa general</small></div>
+      </section>
+
+      <section class="grid">
+        <div class="panel chart-panel">
+          <h3>Gráfico: citas por estado</h3>
+          <canvas id="chartEstados" width="700" height="260"></canvas>
+        </div>
+
+        <div class="panel chart-panel">
+          <h3>Gráfico: ingresos por tipo de pago</h3>
+          <canvas id="chartIngresosTipo" width="700" height="260"></canvas>
+        </div>
+
+        <div class="panel chart-panel full">
+          <h3>Gráfico: ingresos reales y potenciales</h3>
+          <canvas id="chartIngresosResumen" width="1200" height="260"></canvas>
+        </div>
+
+        <div class="panel full">
+          <h3>Citas próximas</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>Paciente</th><th>Doctor</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>Modalidad</th><th>Motivo</th></tr></thead>
+              <tbody id="tablaCitasProximas"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Citas por estado</h3>
+          <div class="table-wrap"><table><thead><tr><th>Estado</th><th>Total</th></tr></thead><tbody id="tablaEstados"></tbody></table></div>
+        </div>
+
+        <div class="panel">
+          <h3>Ingresos por tipo de pago</h3>
+          <div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Cantidad</th><th>Total</th></tr></thead><tbody id="tablaIngresosTipo"></tbody></table></div>
+        </div>
+
+        <div class="panel">
+          <h3>Pacientes frecuentes</h3>
+          <div class="table-wrap"><table><thead><tr><th>Paciente</th><th>Citas</th></tr></thead><tbody id="tablaFrecuentes"></tbody></table></div>
+        </div>
+
+        <div class="panel">
+          <h3>Cumpleaños del mes</h3>
+          <div class="table-wrap"><table><thead><tr><th>Paciente</th><th>Fecha nacimiento</th></tr></thead><tbody id="tablaCumpleanios"></tbody></table></div>
+        </div>
+
+        <div class="panel full">
+          <h3>Sesiones pendientes de pago</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Cita</th><th>Paciente</th><th>Doctor</th><th>Fecha</th><th>Hora</th><th>Estado</th></tr></thead>
+              <tbody id="tablaPendientes"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Usuarios del sistema</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Correo</th><th>Estado</th></tr></thead>
+              <tbody id="tablaUsuarios"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Doctores</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>Doctor</th><th>Especialidad</th><th>Correo</th><th>Teléfono</th><th>Estado</th></tr></thead>
+              <tbody id="tablaDoctores"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    let reporteCargando = false;
+    let ultimoJSON = null;
+
+    function dinero(valor) {
+      return 'Q' + Number(valor || 0).toFixed(2);
+    }
+
+    function badgeEstado(activo) {
+      return Number(activo) === 1
+        ? '<span class="badge ok">Activo</span>'
+        : '<span class="badge off">Inactivo</span>';
+    }
+
+    async function cargarReportes() {
+      if (reporteCargando) return;
+      reporteCargando = true;
+
+      try {
+        const res = await fetch('/api/reportes/');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        ultimoJSON = data;
+
+        document.getElementById('totalPacientes').textContent = data.total_pacientes ?? 0;
+        document.getElementById('totalPacientesGeneral').textContent = `${data.total_pacientes_general ?? 0} registrados`;
+        document.getElementById('usuariosActivos').textContent = data.usuarios_activos ?? 0;
+        document.getElementById('totalUsuarios').textContent = `${data.total_usuarios ?? 0} usuarios`;
+        document.getElementById('doctoresActivos').textContent = data.doctores_activos ?? 0;
+        document.getElementById('totalDoctores').textContent = `${data.total_doctores ?? 0} doctores`;
+        document.getElementById('totalCitas').textContent = data.total_citas ?? 0;
+        document.getElementById('citasHoy').textContent = `${data.citas_hoy ?? 0} hoy`;
+        document.getElementById('citasProximasTotal').textContent = data.citas_proximas_total ?? 0;
+        document.getElementById('ingresosTotales').textContent = dinero(data.ingresos_totales);
+        document.getElementById('totalPagos').textContent = `${data.total_pagos ?? 0} pagos`;
+        document.getElementById('pagosMes').textContent = dinero(data.pagos_del_mes);
+        document.getElementById('ingresosSemanales').textContent = dinero(data.ingresos_semanales);
+        document.getElementById('ingresosPotenciales').textContent = dinero(data.ingresos_potenciales);
+        document.getElementById('citasFuturasPendientes').textContent = `${data.citas_futuras_pendientes_pago ?? 0} citas sin pago`;
+        document.getElementById('tasaCancelaciones').textContent = `${data.tasa_cancelaciones ?? 0}%`;
+        document.getElementById('ultimaActualizacion').textContent = new Date().toLocaleTimeString();
+
+        renderEstados(data.citas_por_estado || []);
+        renderFrecuentes(data.pacientes_frecuentes || []);
+        renderCumpleanios(data.cumpleanios_mes || []);
+        renderIngresosTipo(data.ingresos_por_tipo || []);
+        renderPendientes(data.sesiones_pendientes || []);
+        renderCitasProximas(data.citas_proximas || []);
+        renderUsuarios(data.usuarios_resumen || []);
+        renderDoctores(data.doctores_resumen || []);
+        dibujarGraficos(data);
+      } catch (error) {
+        console.error('Error cargando reportes:', error);
+      } finally {
+        reporteCargando = false;
+      }
+    }
+
+    function renderTabla(tbodyId, data, cols, emptyText) {
+      const tbody = document.getElementById(tbodyId);
+      tbody.innerHTML = '';
+
+      if (!data.length) {
+        tbody.innerHTML = `<tr><td colspan="${cols.length}" class="empty">${emptyText}</td></tr>`;
+        return;
+      }
+
+      data.forEach(item => {
+        const tds = cols.map(col => `<td>${col(item)}</td>`).join('');
+        tbody.innerHTML += `<tr>${tds}</tr>`;
+      });
+    }
+
+    function renderEstados(data) {
+      renderTabla('tablaEstados', data, [
+        x => x.estado || '-',
+        x => x.total ?? 0
+      ], 'Sin datos.');
+    }
+
+    function renderFrecuentes(data) {
+      renderTabla('tablaFrecuentes', data, [
+        x => x.paciente || '-',
+        x => x.total_citas ?? 0
+      ], 'Sin datos.');
+    }
+
+    function renderCumpleanios(data) {
+      renderTabla('tablaCumpleanios', data, [
+        x => x.paciente || '-',
+        x => x.fecha_nacimiento || '-'
+      ], 'Sin cumpleaños este mes.');
+    }
+
+    function renderIngresosTipo(data) {
+      renderTabla('tablaIngresosTipo', data, [
+        x => x.tipo_pago || '-',
+        x => x.cantidad ?? 0,
+        x => `<span class="monto">${dinero(x.total)}</span>`
+      ], 'Sin datos.');
+    }
+
+    function renderPendientes(data) {
+      renderTabla('tablaPendientes', data, [
+        x => x.id_cita ?? '-',
+        x => x.paciente || '-',
+        x => x.doctor || '-',
+        x => x.fecha_cita || '-',
+        x => x.hora_inicio || '-',
+        x => x.estado || '-'
+      ], 'No hay sesiones pendientes de pago.');
+    }
+
+    function renderCitasProximas(data) {
+      renderTabla('tablaCitasProximas', data, [
+        x => x.id_cita ?? '-',
+        x => x.paciente || '-',
+        x => x.doctor || '-',
+        x => x.fecha_cita || '-',
+        x => `${x.hora_inicio || '-'} - ${x.hora_fin || '-'}`,
+        x => x.estado || '-',
+        x => x.modalidad || '-',
+        x => x.motivo || '-'
+      ], 'No hay citas próximas.');
+    }
+
+    function renderUsuarios(data) {
+      renderTabla('tablaUsuarios', data, [
+        x => x.id_usuario ?? '-',
+        x => x.usuario || '-',
+        x => x.nombre || '-',
+        x => x.rol || '-',
+        x => x.correo || '-',
+        x => badgeEstado(x.activo)
+      ], 'No hay usuarios.');
+    }
+
+    function renderDoctores(data) {
+      renderTabla('tablaDoctores', data, [
+        x => x.id_doctor ?? '-',
+        x => x.doctor || '-',
+        x => x.especialidad || '-',
+        x => x.correo || '-',
+        x => x.telefono || '-',
+        x => badgeEstado(x.activo)
+      ], 'No hay doctores.');
+    }
+
+    function limpiarCanvas(canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#0f1e36';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      return ctx;
+    }
+
+    function texto(ctx, txt, x, y, size = 12, align = 'left') {
+      ctx.fillStyle = '#ddeeff';
+      ctx.font = `${size}px Arial`;
+      ctx.textAlign = align;
+      ctx.fillText(String(txt), x, y);
+    }
+
+    function drawBarChart(canvasId, labels, values, title) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = limpiarCanvas(canvas);
+      const w = canvas.width;
+      const h = canvas.height;
+      const max = Math.max(...values, 1);
+      const left = 55;
+      const bottom = h - 42;
+      const top = 34;
+      const areaW = w - left - 25;
+      const areaH = bottom - top;
+      const gap = 12;
+      const barW = values.length ? Math.max(18, (areaW / values.length) - gap) : 20;
+
+      texto(ctx, title, 18, 22, 13);
+
+      ctx.strokeStyle = 'rgba(221,238,255,.18)';
+      ctx.beginPath();
+      ctx.moveTo(left, top);
+      ctx.lineTo(left, bottom);
+      ctx.lineTo(w - 20, bottom);
+      ctx.stroke();
+
+      values.forEach((v, i) => {
+        const x = left + i * (barW + gap) + 10;
+        const bh = (Number(v) / max) * (areaH - 15);
+        const y = bottom - bh;
+        const grad = ctx.createLinearGradient(0, y, 0, bottom);
+        grad.addColorStop(0, '#2dd4bf');
+        grad.addColorStop(1, '#0891b2');
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, y, barW, bh);
+        texto(ctx, v, x + barW / 2, y - 6, 11, 'center');
+        texto(ctx, String(labels[i] || '').slice(0, 12), x + barW / 2, bottom + 18, 10, 'center');
+      });
+    }
+
+    function drawPieChart(canvasId, labels, values) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = limpiarCanvas(canvas);
+      const w = canvas.width;
+      const h = canvas.height;
+      const total = values.reduce((a,b) => a + Number(b || 0), 0);
+      texto(ctx, 'Distribución de ingresos', 18, 22, 13);
+
+      if (!total) {
+        texto(ctx, 'Sin datos', w / 2, h / 2, 18, 'center');
+        return;
+      }
+
+      const colors = ['#2dd4bf', '#38bdf8', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#60a5fa'];
+      let start = -Math.PI / 2;
+      const cx = 175;
+      const cy = 140;
+      const r = 78;
+
+      values.forEach((value, i) => {
+        const angle = (Number(value) / total) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, start, start + angle);
+        ctx.closePath();
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fill();
+        start += angle;
+      });
+
+      labels.forEach((label, i) => {
+        const y = 60 + i * 24;
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(330, y - 10, 13, 13);
+        texto(ctx, `${label}: ${dinero(values[i])}`, 352, y, 11);
+      });
+    }
+
+    function dibujarGraficos(data) {
+      const estados = data.citas_por_estado || [];
+      drawBarChart(
+        'chartEstados',
+        estados.map(x => x.estado),
+        estados.map(x => x.total),
+        'Citas por estado'
+      );
+
+      const ingresos = data.ingresos_por_tipo || [];
+      drawPieChart(
+        'chartIngresosTipo',
+        ingresos.map(x => x.tipo_pago),
+        ingresos.map(x => x.total)
+      );
+
+      drawBarChart(
+        'chartIngresosResumen',
+        ['Totales', 'Mes', 'Semana', 'Potenciales'],
+        [
+          data.ingresos_totales || 0,
+          data.pagos_del_mes || 0,
+          data.ingresos_semanales || 0,
+          data.ingresos_potenciales || 0
+        ],
+        'Ingresos reales y potenciales'
+      );
+    }
+
+    cargarReportes();
+    setInterval(cargarReportes, 1000);
+  </script>
+
+  <script>
+    (async function loadSidebarLogo() {
+      try {
+        const res = await fetch('/api/configuracion/');
+        if (!res.ok) return;
+        const cfg = await res.json();
+        const mark = document.querySelector('.brand-mark');
+        if (!mark) return;
+        if (cfg.logo_url && cfg.logo_url.trim()) {
+          mark.innerHTML = '';
+          mark.style.padding = '0';
+          mark.style.overflow = 'hidden';
+          const img = document.createElement('img');
+          img.src = cfg.logo_url.trim();
+          img.alt = 'Logo';
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:10px;';
+          img.onerror = function() {
+            mark.style.padding = '';
+            mark.style.overflow = '';
+            mark.innerHTML = '✚';
+          };
+          mark.appendChild(img);
+        }
+        const brandName = document.querySelector('.brand-name');
+        if (brandName && cfg.nombre_clinica && cfg.nombre_clinica.trim()) {
+          brandName.textContent = cfg.nombre_clinica.trim();
+        }
+      } catch (e) {}
+    })();
+  </script>
+</body>
+</html>
