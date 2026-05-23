@@ -1975,7 +1975,13 @@ def _hora_como_time(valor):
 
 
 def _rango_recordatorios_dashboard():
-    hoy = timezone.localdate()
+    # No usamos timezone.localdate() porque en producción puede fallar si Django maneja datetime naive.
+    # Para recordatorios manuales basta usar fecha local de Guatemala.
+    try:
+        from zoneinfo import ZoneInfo
+        hoy = datetime.now(ZoneInfo('America/Guatemala')).date()
+    except Exception:
+        hoy = date.today()
     manana = hoy + timedelta(days=1)
     return hoy, manana
 
@@ -2235,7 +2241,7 @@ def abrir_whatsapp_cita(request, id_cita):
                 'manual_dashboard',
                 cita.id_paciente.telefono,
                 mensaje,
-                timezone.now(),
+                datetime.now(),
                 'enviado'
             ])
     except Exception as e:
@@ -2256,7 +2262,7 @@ def generar_recordatorios_automaticos(request):
 
     try:
         citas = _citas_recordatorio_qs()
-        fecha_programada = timezone.now()
+        fecha_programada = datetime.now()
 
         for cita in citas:
             try:
@@ -2362,9 +2368,12 @@ def api_dashboard_recordatorios(request):
                 return ''
             return f"{doctor.id_usuario.nombres or ''} {doctor.id_usuario.apellidos or ''}".strip()
 
-        ahora_gt = timezone.now().astimezone(ZoneInfo("America/Guatemala"))
+        try:
+            ahora_gt = datetime.now(ZoneInfo("America/Guatemala"))
+        except Exception:
+            ahora_gt = datetime.now()
         hoy = ahora_gt.date()
-        hace_7_dias_dt = timezone.now() - timedelta(days=7)
+        hace_7_dias_dt = datetime.now() - timedelta(days=7)
         fin_7_dias = hoy + timedelta(days=7)
 
         citas_base = Citas.objects.select_related(
