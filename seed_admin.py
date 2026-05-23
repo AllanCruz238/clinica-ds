@@ -17,7 +17,7 @@ ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@nubnest.com")
 with connection.cursor() as cursor:
     cursor.execute("""
         INSERT INTO roles (descripcion, activo)
-        SELECT 'Administrador', TRUE
+        SELECT 'Administrador', 1
         WHERE NOT EXISTS (
             SELECT 1 FROM roles WHERE descripcion = 'Administrador'
         );
@@ -47,7 +47,7 @@ with connection.cursor() as cursor:
             activo,
             fecha_creacion
         )
-        SELECT %s, %s, %s, %s, %s, %s, TRUE, NOW()
+        SELECT %s, %s, %s, %s, %s, %s, 1, NOW()
         WHERE NOT EXISTS (
             SELECT 1 FROM usuarios WHERE usuario = %s
         );
