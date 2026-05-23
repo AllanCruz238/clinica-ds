@@ -2256,260 +2256,238 @@ def generar_recordatorios_automaticos(request):
     )
 
 
+
 def api_dashboard_recordatorios(request):
     """
-    Dashboard principal usando SQL compatible con PostgreSQL.
-    Esta versión evita funciones MySQL y fuerza comparación por fecha con ::date,
-    para que las citas creadas hoy o mañana sí aparezcan en Render.
+    Dashboard corregido para producción en Render/PostgreSQL.
+    No usa funciones MySQL como CURDATE(), DATE_ADD(), MONTH() o YEAR().
+    Además evita error 500: si algo falla, devuelve el error en el JSON para poder diagnosticarlo.
     """
+    try:
+        from decimal import Decimal
+        from zoneinfo import ZoneInfo
 
-    tz_gt = timezone.get_fixed_timezone(-360)
-    ahora = timezone.localtime(timezone.now(), tz_gt)
-    hoy = ahora.date()
-    hace_7_dias = hoy - timedelta(days=7)
-    proximos_7_dias = hoy + timedelta(days=7)
-    inicio_mes = hoy.replace(day=1)
-    if inicio_mes.month == 12:
-        inicio_mes_siguiente = inicio_mes.replace(year=inicio_mes.year + 1, month=1, day=1)
-    else:
-        inicio_mes_siguiente = inicio_mes.replace(month=inicio_mes.month + 1, day=1)
+        def to_float(value):
+            if value is None:
+                return 0.0
+            if isinstance(value, Decimal):
+                return float(value)
+            try:
+                return float(value)
+            except Exception:
+                return 0.0
 
-    def fetchone_val(sql, params=None, default=0):
+        def estado_no_cancelado(qs):
+            return qs.exclude(id_estado_cita__nombre_estado__iexact='Cancelada').exclude(
+                id_estado_cita__nombre_estado__iexact='Cancelado'
+            )
+
+        def nombre_paciente(paciente):
+            if not paciente:
+                return ''
+            return f"{paciente.nombres or ''} {paciente.apellidos or ''}".strip()
+
+        def nombre_doctor(doctor):
+            if not doctor or not doctor.id_usuario:
+                return ''
+            return f"{doctor.id_usuario.nombres or ''} {doctor.id_usuario.apellidos or ''}".strip()
+
+        ahora_gt = timezone.now().astimezone(ZoneInfo("America/Guatemala"))
+        hoy = ahora_gt.date()
+        hace_7_dias_dt = timezone.now() - timedelta(days=7)
+        fin_7_dias = hoy + timedelta(days=7)
+
+        citas_base = Citas.objects.select_related(
+            'id_paciente',
+            'id_doctor__id_usuario',
+            'id_estado_cita'
+        )
+
+        citas_validas = estado_no_cancelado(citas_base)
+
+        pagos_base = Pagos.objects.select_related(
+            'id_paciente',
+            'id_cita',
+            'id_tipo_pago'
+        )
+
+        pagos_mes_qs = pagos_base.filter(
+            fecha_pago__isnull=False,
+            fecha_pago__year=hoy.year,
+            fecha_pago__month=hoy.month
+        )
+
+        ingresos_semanales = pagos_base.filter(
+            fecha_pago__isnull=False,
+            fecha_pago__gte=hace_7_dias_dt
+        ).aggregate(total=Sum('monto'))['total'] or 0
+
+        ingresos_mes = pagos_mes_qs.aggregate(total=Sum('monto'))['total'] or 0
+
+        ultimo_pago_obj = pagos_base.order_by('-fecha_pago', '-id_pago').first()
+        ultimo_pago = to_float(ultimo_pago_obj.monto) if ultimo_pago_obj else 0
+
+        total_citas_mes = citas_base.filter(
+            fecha_cita__isnull=False,
+            fecha_cita__year=hoy.year,
+            fecha_cita__month=hoy.month
+        ).count()
+
+        canceladas_mes = citas_base.filter(
+            fecha_cita__isnull=False,
+            fecha_cita__year=hoy.year,
+            fecha_cita__month=hoy.month,
+            id_estado_cita__nombre_estado__iexact='Cancelada'
+        ).count() + citas_base.filter(
+            fecha_cita__isnull=False,
+            fecha_cita__year=hoy.year,
+            fecha_cita__month=hoy.month,
+            id_estado_cita__nombre_estado__iexact='Cancelado'
+        ).count()
+
+        tasa_cancelaciones = round((canceladas_mes / total_citas_mes) * 100, 2) if total_citas_mes else 0
+
+        citas_con_pago_ids = list(
+            Pagos.objects.exclude(id_cita__isnull=True).values_list('id_cita_id', flat=True)
+        )
+
+        citas_pasadas_sin_pago = estado_no_cancelado(
+            citas_base.filter(fecha_cita__lt=hoy)
+        ).exclude(id_cita__in=citas_con_pago_ids)
+
+        data = {
+            "ok": True,
+            "citas_hoy": citas_validas.filter(fecha_cita=hoy).count(),
+            "citas_proximos_7_dias": citas_validas.filter(fecha_cita__gte=hoy, fecha_cita__lte=fin_7_dias).count(),
+            "pacientes_con_deuda": citas_pasadas_sin_pago.values('id_paciente').distinct().count(),
+            "ingresos_semanales": to_float(ingresos_semanales),
+            "ingresos_mes": to_float(ingresos_mes),
+            "pagos_mes": pagos_mes_qs.count(),
+            "ultimo_pago": ultimo_pago,
+            "tasa_cancelaciones": tasa_cancelaciones,
+            "canceladas_mes": canceladas_mes,
+            "total_citas_mes": total_citas_mes,
+            "correos_pendientes": 0,
+            "whatsapp_pendientes": 0,
+            "total_recordatorios_pendientes": 0,
+            "recordatorios_pendientes": [],
+            "pagos_recientes": [],
+            "citas_proximas": [],
+            "pacientes_pendientes_pago": [],
+            "citas_estado_mes": [],
+            "ultima_actualizacion_servidor": ahora_gt.strftime('%H:%M:%S'),
+            "debug_total_citas": Citas.objects.count(),
+            "debug_total_pagos": Pagos.objects.count(),
+            "debug_hoy_gt": str(hoy),
+        }
+
+        for p in pagos_mes_qs.order_by('-fecha_pago', '-id_pago')[:8]:
+            data["pagos_recientes"].append({
+                "id_pago": p.id_pago,
+                "paciente": nombre_paciente(p.id_paciente),
+                "monto": to_float(p.monto),
+                "fecha_pago": p.fecha_pago.strftime('%Y-%m-%d %H:%M') if p.fecha_pago else '',
+                "tipo_pago": p.id_tipo_pago.nombre_tipo_pago if p.id_tipo_pago else 'Sin tipo'
+            })
+
+        for c in citas_validas.filter(fecha_cita__gte=hoy, fecha_cita__lte=fin_7_dias).order_by('fecha_cita', 'hora_inicio')[:8]:
+            data["citas_proximas"].append({
+                "id_cita": c.id_cita,
+                "paciente": nombre_paciente(c.id_paciente),
+                "doctor": nombre_doctor(c.id_doctor),
+                "fecha_cita": str(c.fecha_cita) if c.fecha_cita else '',
+                "hora_inicio": str(c.hora_inicio)[:5] if c.hora_inicio else '',
+                "estado": c.id_estado_cita.nombre_estado if c.id_estado_cita else 'Sin estado'
+            })
+
+        for c in citas_pasadas_sin_pago.order_by('-fecha_cita', '-hora_inicio')[:8]:
+            data["pacientes_pendientes_pago"].append({
+                "id_cita": c.id_cita,
+                "paciente": nombre_paciente(c.id_paciente),
+                "fecha_cita": str(c.fecha_cita) if c.fecha_cita else '',
+                "hora_inicio": str(c.hora_inicio)[:5] if c.hora_inicio else '',
+                "estado": c.id_estado_cita.nombre_estado if c.id_estado_cita else 'Sin estado'
+            })
+
+        estados_mes = citas_base.filter(
+            fecha_cita__isnull=False,
+            fecha_cita__year=hoy.year,
+            fecha_cita__month=hoy.month
+        ).values('id_estado_cita__nombre_estado').annotate(total=Count('id_cita')).order_by('-total')
+
+        for item in estados_mes:
+            data["citas_estado_mes"].append({
+                "estado": item.get('id_estado_cita__nombre_estado') or 'Sin estado',
+                "total": int(item.get('total') or 0)
+            })
+
         try:
             with connection.cursor() as cursor:
-                cursor.execute(sql, params or [])
-                row = cursor.fetchone()
-            if not row or row[0] is None:
-                return default
-            return row[0]
+                cursor.execute("""
+                    SELECT COUNT(*) FROM recordatorios
+                    WHERE canal = %s AND estado_envio = %s
+                """, ['correo', 'pendiente'])
+                data["correos_pendientes"] = int(cursor.fetchone()[0] or 0)
+
+                cursor.execute("""
+                    SELECT COUNT(*) FROM recordatorios
+                    WHERE canal = %s AND estado_envio = %s
+                """, ['whatsapp', 'pendiente'])
+                data["whatsapp_pendientes"] = int(cursor.fetchone()[0] or 0)
+
+                cursor.execute("""
+                    SELECT id_recordatorio, canal, tipo_recordatorio, destinatario, mensaje, fecha_programada, estado_envio
+                    FROM recordatorios
+                    WHERE estado_envio = %s
+                    ORDER BY fecha_programada ASC
+                    LIMIT 8
+                """, ['pendiente'])
+                filas = cursor.fetchall()
+
+            data["total_recordatorios_pendientes"] = data["correos_pendientes"] + data["whatsapp_pendientes"]
+
+            for fila in filas:
+                data["recordatorios_pendientes"].append({
+                    "id_recordatorio": fila[0],
+                    "canal": fila[1],
+                    "tipo_recordatorio": fila[2],
+                    "destinatario": fila[3],
+                    "mensaje": fila[4],
+                    "fecha_programada": str(fila[5]) if fila[5] else '',
+                    "estado_envio": fila[6],
+                })
         except Exception as e:
-            print("ERROR DASHBOARD fetchone:", e, sql)
-            return default
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            data["debug_error_recordatorios"] = str(e)
 
-    def fetchall(sql, params=None):
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, params or [])
-                return cursor.fetchall()
-        except Exception as e:
-            print("ERROR DASHBOARD fetchall:", e, sql)
-            return []
+        return JsonResponse(data, json_dumps_params={'ensure_ascii': False})
 
-    data = {
-        "citas_hoy": 0,
-        "citas_proximos_7_dias": 0,
-        "pacientes_con_deuda": 0,
-        "ingresos_semanales": 0,
-        "ingresos_mes": 0,
-        "pagos_mes": 0,
-        "ultimo_pago": 0,
-        "tasa_cancelaciones": 0,
-        "canceladas_mes": 0,
-        "total_citas_mes": 0,
-        "correos_pendientes": 0,
-        "whatsapp_pendientes": 0,
-        "total_recordatorios_pendientes": 0,
-        "recordatorios_pendientes": [],
-        "pagos_recientes": [],
-        "citas_proximas": [],
-        "pacientes_pendientes_pago": [],
-        "citas_estado_mes": [],
-        "ultima_actualizacion_servidor": ahora.strftime('%H:%M:%S')
-    }
-
-    no_cancelada_sql = "(e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))"
-
-    data["citas_hoy"] = int(fetchone_val(f"""
-        SELECT COUNT(*)
-        FROM citas c
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita::date = %s
-          AND {no_cancelada_sql}
-    """, [hoy]))
-
-    data["citas_proximos_7_dias"] = int(fetchone_val(f"""
-        SELECT COUNT(*)
-        FROM citas c
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita::date BETWEEN %s AND %s
-          AND {no_cancelada_sql}
-    """, [hoy, proximos_7_dias]))
-
-    data["ingresos_semanales"] = float(fetchone_val("""
-        SELECT COALESCE(SUM(monto), 0)
-        FROM pagos
-        WHERE fecha_pago IS NOT NULL
-          AND fecha_pago::date >= %s
-    """, [hace_7_dias], default=0) or 0)
-
-    data["ingresos_mes"] = float(fetchone_val("""
-        SELECT COALESCE(SUM(monto), 0)
-        FROM pagos
-        WHERE fecha_pago IS NOT NULL
-          AND fecha_pago::date >= %s
-          AND fecha_pago::date < %s
-    """, [inicio_mes, inicio_mes_siguiente], default=0) or 0)
-
-    data["pagos_mes"] = int(fetchone_val("""
-        SELECT COUNT(*)
-        FROM pagos
-        WHERE fecha_pago IS NOT NULL
-          AND fecha_pago::date >= %s
-          AND fecha_pago::date < %s
-    """, [inicio_mes, inicio_mes_siguiente]))
-
-    data["ultimo_pago"] = float(fetchone_val("""
-        SELECT COALESCE(monto, 0)
-        FROM pagos
-        ORDER BY fecha_pago DESC NULLS LAST, id_pago DESC
-        LIMIT 1
-    """, default=0) or 0)
-
-    data["total_citas_mes"] = int(fetchone_val("""
-        SELECT COUNT(*)
-        FROM citas
-        WHERE fecha_cita IS NOT NULL
-          AND fecha_cita::date >= %s
-          AND fecha_cita::date < %s
-    """, [inicio_mes, inicio_mes_siguiente]))
-
-    data["canceladas_mes"] = int(fetchone_val("""
-        SELECT COUNT(*)
-        FROM citas c
-        INNER JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita IS NOT NULL
-          AND c.fecha_cita::date >= %s
-          AND c.fecha_cita::date < %s
-          AND LOWER(e.nombre_estado) IN ('cancelada', 'cancelado')
-    """, [inicio_mes, inicio_mes_siguiente]))
-
-    data["tasa_cancelaciones"] = round(
-        (data["canceladas_mes"] / data["total_citas_mes"]) * 100, 2
-    ) if data["total_citas_mes"] else 0
-
-    data["pacientes_con_deuda"] = int(fetchone_val(f"""
-        SELECT COUNT(DISTINCT c.id_paciente)
-        FROM citas c
-        LEFT JOIN pagos p ON c.id_cita = p.id_cita
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita::date < %s
-          AND p.id_pago IS NULL
-          AND {no_cancelada_sql}
-    """, [hoy]))
-
-    data["correos_pendientes"] = int(fetchone_val("""
-        SELECT COUNT(*)
-        FROM recordatorios
-        WHERE canal = 'correo'
-          AND estado_envio = 'pendiente'
-    """))
-
-    data["whatsapp_pendientes"] = int(fetchone_val("""
-        SELECT COUNT(*)
-        FROM recordatorios
-        WHERE canal = 'whatsapp'
-          AND estado_envio = 'pendiente'
-    """))
-
-    data["total_recordatorios_pendientes"] = data["correos_pendientes"] + data["whatsapp_pendientes"]
-
-    for fila in fetchall("""
-        SELECT id_recordatorio, canal, tipo_recordatorio, destinatario, mensaje, fecha_programada, estado_envio
-        FROM recordatorios
-        WHERE estado_envio = 'pendiente'
-        ORDER BY fecha_programada ASC
-        LIMIT 8
-    """):
-        data["recordatorios_pendientes"].append({
-            "id_recordatorio": fila[0],
-            "canal": fila[1],
-            "tipo_recordatorio": fila[2],
-            "destinatario": fila[3],
-            "mensaje": fila[4],
-            "fecha_programada": fila[5].strftime('%Y-%m-%d %H:%M') if fila[5] else '',
-            "estado_envio": fila[6],
-        })
-
-    for fila in fetchall("""
-        SELECT p.id_pago, pa.nombres, pa.apellidos, p.monto, p.fecha_pago, COALESCE(tp.nombre_tipo_pago, 'Sin tipo')
-        FROM pagos p
-        LEFT JOIN pacientes pa ON p.id_paciente = pa.id_paciente
-        LEFT JOIN tipos_pago tp ON p.id_tipo_pago = tp.id_tipo_pago
-        WHERE p.fecha_pago IS NOT NULL
-          AND p.fecha_pago::date >= %s
-          AND p.fecha_pago::date < %s
-        ORDER BY p.fecha_pago DESC NULLS LAST, p.id_pago DESC
-        LIMIT 8
-    """, [inicio_mes, inicio_mes_siguiente]):
-        data["pagos_recientes"].append({
-            "id_pago": fila[0],
-            "paciente": f"{fila[1] or ''} {fila[2] or ''}".strip(),
-            "monto": float(fila[3] or 0),
-            "fecha_pago": fila[4].strftime('%Y-%m-%d %H:%M') if fila[4] else '',
-            "tipo_pago": fila[5] or ''
-        })
-
-    for fila in fetchall(f"""
-        SELECT c.id_cita, pa.nombres, pa.apellidos, ud.nombres, ud.apellidos, c.fecha_cita, c.hora_inicio,
-               COALESCE(e.nombre_estado, 'Sin estado') AS estado
-        FROM citas c
-        LEFT JOIN pacientes pa ON c.id_paciente = pa.id_paciente
-        LEFT JOIN doctores d ON c.id_doctor = d.id_doctor
-        LEFT JOIN usuarios ud ON d.id_usuario = ud.id_usuario
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita::date BETWEEN %s AND %s
-          AND {no_cancelada_sql}
-        ORDER BY c.fecha_cita ASC, c.hora_inicio ASC
-        LIMIT 8
-    """, [hoy, proximos_7_dias]):
-        data["citas_proximas"].append({
-            "id_cita": fila[0],
-            "paciente": f"{fila[1] or ''} {fila[2] or ''}".strip(),
-            "doctor": f"{fila[3] or ''} {fila[4] or ''}".strip(),
-            "fecha_cita": str(fila[5])[:10] if fila[5] else '',
-            "hora_inicio": str(fila[6])[:5] if fila[6] else '',
-            "estado": fila[7] or ''
-        })
-
-    for fila in fetchall(f"""
-        SELECT c.id_cita, pa.nombres, pa.apellidos, c.fecha_cita, c.hora_inicio, COALESCE(e.nombre_estado, 'Sin estado')
-        FROM citas c
-        LEFT JOIN pagos p ON c.id_cita = p.id_cita
-        LEFT JOIN pacientes pa ON c.id_paciente = pa.id_paciente
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita::date < %s
-          AND p.id_pago IS NULL
-          AND {no_cancelada_sql}
-        ORDER BY c.fecha_cita DESC, c.hora_inicio DESC
-        LIMIT 8
-    """, [hoy]):
-        data["pacientes_pendientes_pago"].append({
-            "id_cita": fila[0],
-            "paciente": f"{fila[1] or ''} {fila[2] or ''}".strip(),
-            "fecha_cita": str(fila[3])[:10] if fila[3] else '',
-            "hora_inicio": str(fila[4])[:5] if fila[4] else '',
-            "estado": fila[5] or ''
-        })
-
-    for fila in fetchall("""
-        SELECT COALESCE(e.nombre_estado, 'Sin estado') AS estado, COUNT(c.id_cita) AS total
-        FROM citas c
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita IS NOT NULL
-          AND c.fecha_cita::date >= %s
-          AND c.fecha_cita::date < %s
-        GROUP BY estado
-        ORDER BY total DESC
-    """, [inicio_mes, inicio_mes_siguiente]):
-        data["citas_estado_mes"].append({
-            "estado": fila[0] or 'Sin estado',
-            "total": int(fila[1] or 0)
-        })
-
-    # Extra de diagnóstico visible solo en el JSON, el dashboard puede ignorarlo.
-    data["debug_total_citas"] = int(fetchone_val("SELECT COUNT(*) FROM citas"))
-    data["debug_total_pagos"] = int(fetchone_val("SELECT COUNT(*) FROM pagos"))
-    data["debug_hoy_gt"] = str(hoy)
-
-    return JsonResponse(data, json_dumps_params={'ensure_ascii': False})
-
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "citas_hoy": 0,
+            "citas_proximos_7_dias": 0,
+            "pacientes_con_deuda": 0,
+            "ingresos_semanales": 0,
+            "ingresos_mes": 0,
+            "pagos_mes": 0,
+            "ultimo_pago": 0,
+            "tasa_cancelaciones": 0,
+            "canceladas_mes": 0,
+            "total_citas_mes": 0,
+            "correos_pendientes": 0,
+            "whatsapp_pendientes": 0,
+            "total_recordatorios_pendientes": 0,
+            "recordatorios_pendientes": [],
+            "pagos_recientes": [],
+            "citas_proximas": [],
+            "pacientes_pendientes_pago": [],
+            "citas_estado_mes": [],
+            "ultima_actualizacion_servidor": datetime.now().strftime('%H:%M:%S')
+        }, json_dumps_params={'ensure_ascii': False})
