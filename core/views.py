@@ -583,67 +583,6 @@ def crear_pago_json(request):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
-@rol_requerido(['Administrador', 'Recepción'])
-def actualizar_pago_json(request, id_pago):
-    if request.method != 'POST':
-        return JsonResponse({'ok': False, 'error': 'Método no permitido'}, status=405)
-
-    try:
-        body = json.loads(request.body)
-
-        pago = Pagos.objects.get(id_pago=id_pago)
-
-        if not body.get('id_paciente'):
-            return JsonResponse({'ok': False, 'error': 'El paciente es obligatorio.'}, status=400)
-
-        if not body.get('id_tipo_pago'):
-            return JsonResponse({'ok': False, 'error': 'El tipo de pago es obligatorio.'}, status=400)
-
-        pago.id_paciente = Pacientes.objects.get(id_paciente=body['id_paciente'])
-        pago.id_tipo_pago = TiposPago.objects.get(id_tipo_pago=body['id_tipo_pago'])
-
-        pago.id_cita = None
-        if body.get('id_cita'):
-            pago.id_cita = Citas.objects.get(id_cita=body['id_cita'])
-
-        pago.monto = body.get('monto', 0)
-        pago.referencia_pago = body.get('referencia_pago', '').strip()
-        pago.observaciones = body.get('observaciones', '').strip()
-        pago.save()
-
-        return JsonResponse({
-            'ok': True,
-            'mensaje': 'Pago actualizado correctamente'
-        }, json_dumps_params={'ensure_ascii': False})
-
-    except Pagos.DoesNotExist:
-        return JsonResponse({'ok': False, 'error': 'Pago no encontrado.'}, status=404)
-    except Exception as e:
-        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
-
-
-@csrf_exempt
-@rol_requerido(['Administrador', 'Recepción'])
-def eliminar_pago_json(request, id_pago):
-    if request.method != 'POST':
-        return JsonResponse({'ok': False, 'error': 'Método no permitido'}, status=405)
-
-    try:
-        pago = Pagos.objects.get(id_pago=id_pago)
-        pago.delete()
-
-        return JsonResponse({
-            'ok': True,
-            'mensaje': 'Pago eliminado correctamente'
-        }, json_dumps_params={'ensure_ascii': False})
-
-    except Pagos.DoesNotExist:
-        return JsonResponse({'ok': False, 'error': 'Pago no encontrado.'}, status=404)
-    except Exception as e:
-        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
-
-
 @rol_requerido(['Administrador', 'Doctor'])
 def notas_page(request):
     return render(request, 'core/notas.html')
@@ -1952,79 +1891,12 @@ def generar_word_paciente(request, id_paciente):
     return response
 
 
-
-def _hora_como_time(valor):
-    if isinstance(valor, time):
-        return valor
-
-    if isinstance(valor, timedelta):
-        segundos = int(valor.total_seconds())
-        horas = segundos // 3600
-        minutos = (segundos % 3600) // 60
-        segundos = segundos % 60
-        return time(horas, minutos, segundos)
-
-    if isinstance(valor, str):
-        partes = valor.split(':')
-        horas = int(partes[0]) if len(partes) > 0 and partes[0] else 8
-        minutos = int(partes[1]) if len(partes) > 1 and partes[1] else 0
-        segundos = int(partes[2]) if len(partes) > 2 and partes[2] else 0
-        return time(horas, minutos, segundos)
-
-    return time(8, 0, 0)
-
-
-def _rango_recordatorios_dashboard():
-    # No usamos timezone.localdate() porque en producción puede fallar si Django maneja datetime naive.
-    # Para recordatorios manuales basta usar fecha local de Guatemala.
-    try:
-        from zoneinfo import ZoneInfo
-        hoy = datetime.now(ZoneInfo('America/Guatemala')).date()
-    except Exception:
-        hoy = date.today()
-    manana = hoy + timedelta(days=1)
-    return hoy, manana
-
-
-def _nombre_paciente_cita(cita):
-    if not cita or not cita.id_paciente:
-        return 'Paciente'
-    return f"{cita.id_paciente.nombres or ''} {cita.id_paciente.apellidos or ''}".strip()
-
-
-def _mensaje_cita_recordatorio(cita):
-    hora_inicio = _hora_como_time(cita.hora_inicio)
-    nombre = _nombre_paciente_cita(cita)
-    modalidad = cita.modalidad or 'No registrada'
-    motivo = cita.razon_consulta_detalle or 'Consulta médica'
-    return (
-        f"Hola {nombre}, le recordamos su cita médica programada para el "
-        f"{cita.fecha_cita} a las {hora_inicio.strftime('%H:%M')}. "
-        f"Modalidad: {modalidad}. Motivo: {motivo}. Clínica Nubnest."
-    )
-
-
-def _citas_recordatorio_qs():
-    hoy, manana = _rango_recordatorios_dashboard()
-    return Citas.objects.select_related(
-        'id_paciente',
-        'id_estado_cita',
-        'id_doctor__id_usuario'
-    ).filter(
-        fecha_cita__gte=hoy,
-        fecha_cita__lte=manana
-    ).exclude(
-        id_estado_cita__nombre_estado__iexact='Cancelada'
-    ).exclude(
-        id_estado_cita__nombre_estado__iexact='Cancelado'
-    ).order_by('fecha_cita', 'hora_inicio')
-
-
 @rol_requerido(['Administrador', 'Recepción'])
 def enviar_recordatorios_correo(request):
     enviados = 0
     errores = 0
     omitidos = 0
+    detalle_errores = []
 
     try:
         with connection.cursor() as cursor:
@@ -2034,21 +1906,26 @@ def enviar_recordatorios_correo(request):
                 WHERE canal = %s
                   AND estado_envio = %s
                 ORDER BY fecha_programada ASC
+                LIMIT 20
             """, ['correo', 'pendiente'])
             recordatorios = cursor.fetchall()
     except Exception as e:
-        return HttpResponse(f"Error consultando recordatorios de correo: {str(e)}", status=500)
+        return HttpResponse(f"Error consultando recordatorios de correo: {str(e)}", status=200)
+
+    if not recordatorios:
+        return HttpResponse("No hay recordatorios pendientes por correo.", status=200)
 
     for id_recordatorio, destinatario, mensaje in recordatorios:
         if not destinatario:
             omitidos += 1
+            detalle_errores.append(f"Recordatorio {id_recordatorio}: sin destinatario.")
             continue
 
         try:
             send_mail(
                 subject='Recordatorio de cita médica',
                 message=mensaje,
-                from_email='clinica@nubnest.com',
+                from_email=None,
                 recipient_list=[destinatario],
                 fail_silently=False,
             )
@@ -2061,46 +1938,53 @@ def enviar_recordatorios_correo(request):
                 """, ['enviado', id_recordatorio])
 
             enviados += 1
+
         except Exception as e:
             errores += 1
+            error_txt = str(e)
+            detalle_errores.append(f"Recordatorio {id_recordatorio}: {error_txt}")
             print('ERROR AL ENVIAR CORREO:', e)
 
-    return HttpResponse(
-        f"Recordatorios procesados. Enviados: {enviados}. Omitidos: {omitidos}. Errores: {errores}."
-    )
+    respuesta = f"Recordatorios procesados. Enviados: {enviados}. Omitidos: {omitidos}. Errores: {errores}."
+
+    if detalle_errores:
+        respuesta += "
+
+Detalle:
+" + "
+".join(detalle_errores[:10])
+
+    return HttpResponse(respuesta, status=200)
 
 
 def limpiar_numero_whatsapp(numero):
-    numero = str(numero or '')
+    numero = str(numero)
     numero = re.sub(r'\D', '', numero)
+
+    # Si es número de Guatemala de 8 dígitos, agregar código de país 502
     if len(numero) == 8:
-        numero = '502' + numero
+        numero = "502" + numero
+
     return numero
 
 
 @rol_requerido(['Administrador', 'Recepción'])
 def listar_recordatorios_whatsapp(request):
-    """
-    Muestra WhatsApp para citas de hoy y mañana.
-    Si ya existen recordatorios pendientes en la tabla recordatorios, los muestra.
-    Si no existen, igual muestra enlaces manuales directos desde las citas próximas.
-    """
-    pendientes = []
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT id_recordatorio, destinatario, mensaje, fecha_programada
-                FROM recordatorios
-                WHERE canal = %s
-                  AND estado_envio = %s
-                ORDER BY fecha_programada ASC
-            """, ['whatsapp', 'pendiente'])
-            pendientes = cursor.fetchall()
-    except Exception as e:
-        print('ERROR CONSULTANDO WHATSAPP PENDIENTES:', e)
-        pendientes = []
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                id_recordatorio,
+                destinatario,
+                mensaje,
+                fecha_programada
+            FROM recordatorios
+            WHERE canal = 'whatsapp'
+              AND estado_envio = 'pendiente'
+              AND fecha_programada <= NOW()
+            ORDER BY fecha_programada ASC
+        """)
 
-    citas = list(_citas_recordatorio_qs())
+        recordatorios = cursor.fetchall()
 
     html = """
     <!DOCTYPE html>
@@ -2109,64 +1993,89 @@ def listar_recordatorios_whatsapp(request):
         <meta charset="UTF-8">
         <title>Recordatorios WhatsApp</title>
         <style>
-            body { font-family: Arial, sans-serif; background:#08111f; color:#ddeeff; padding:24px; }
-            h1 { color:#ddeeff; font-size:24px; margin-bottom:8px; }
-            .sub { color:#7fa0c3; margin-bottom:18px; }
-            .card { background:#0f1e36; border:1px solid rgba(45,212,191,.22); border-radius:14px; padding:16px; margin-bottom:14px; }
-            .numero { font-weight:bold; margin-bottom:6px; }
-            .fecha { color:#93b5d9; font-size:14px; margin-bottom:8px; }
-            .mensaje { background:#0a1628; padding:12px; border-radius:10px; margin-bottom:12px; white-space:pre-wrap; line-height:1.5; }
-            .btn { display:inline-block; background:#22c55e; color:#04110a; text-decoration:none; padding:10px 14px; border-radius:10px; font-weight:bold; margin-right:8px; }
-            .btn.secondary { background:#38bdf8; color:#06111f; }
-            .empty { background:#0f1e36; border:1px solid rgba(45,212,191,.22); padding:18px; border-radius:14px; color:#cfe3ff; }
-            hr { border:0; border-top:1px solid rgba(45,212,191,.18); margin:18px 0; }
+            body {
+                font-family: Arial, sans-serif;
+                background: #f4f6f8;
+                padding: 30px;
+            }
+
+            h1 {
+                color: #111827;
+            }
+
+            .card {
+                background: white;
+                border-radius: 12px;
+                padding: 18px;
+                margin-bottom: 15px;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+            }
+
+            .numero {
+                font-weight: bold;
+                color: #111827;
+                margin-bottom: 8px;
+            }
+
+            .fecha {
+                color: #6b7280;
+                font-size: 14px;
+                margin-bottom: 10px;
+            }
+
+            .mensaje {
+                background: #f9fafb;
+                padding: 12px;
+                border-radius: 8px;
+                margin-bottom: 12px;
+                white-space: pre-wrap;
+            }
+
+            .btn {
+                display: inline-block;
+                background: #16a34a;
+                color: white;
+                text-decoration: none;
+                padding: 10px 14px;
+                border-radius: 8px;
+                font-weight: bold;
+            }
+
+            .empty {
+                background: white;
+                padding: 20px;
+                border-radius: 12px;
+                color: #374151;
+            }
         </style>
     </head>
     <body>
-        <h1>Recordatorios WhatsApp</h1>
-        <div class="sub">Citas de hoy y mañana. Puedes abrir WhatsApp manualmente desde cada botón.</div>
+        <h1>Recordatorios pendientes por WhatsApp</h1>
     """
 
-    total_mostrados = 0
+    if not recordatorios:
+        html += """
+        <div class="empty">
+            No hay recordatorios pendientes por WhatsApp.
+        </div>
+        """
+    else:
+        for recordatorio in recordatorios:
+            id_recordatorio = recordatorio[0]
+            destinatario = recordatorio[1]
+            mensaje = recordatorio[2]
+            fecha_programada = recordatorio[3]
 
-    if pendientes:
-        html += "<h3>Pendientes generados</h3>"
-        for id_recordatorio, destinatario, mensaje, fecha_programada in pendientes:
-            numero_limpio = limpiar_numero_whatsapp(destinatario)
-            wa_url = f"https://wa.me/{numero_limpio}?text={quote(str(mensaje))}"
             html += f"""
             <div class="card">
                 <div class="numero">Número: {destinatario}</div>
                 <div class="fecha">Fecha programada: {fecha_programada}</div>
                 <div class="mensaje">{mensaje}</div>
-                <a class="btn" target="_blank" href="{wa_url}">Abrir WhatsApp</a>
-                <a class="btn secondary" target="_blank" href="/recordatorios/whatsapp/{id_recordatorio}/abrir/">Abrir y marcar enviado</a>
+                <a class="btn" target="_blank" href="/recordatorios/whatsapp/{id_recordatorio}/abrir/">
+                    Abrir WhatsApp
+                </a>
             </div>
             """
-            total_mostrados += 1
-
-    html += "<h3>Citas de hoy y mañana</h3>"
-    for cita in citas:
-        if not cita.id_paciente or not cita.id_paciente.telefono:
-            continue
-        mensaje = _mensaje_cita_recordatorio(cita)
-        numero = cita.id_paciente.telefono
-        numero_limpio = limpiar_numero_whatsapp(numero)
-        wa_url = f"https://wa.me/{numero_limpio}?text={quote(str(mensaje))}"
-        hora_inicio = _hora_como_time(cita.hora_inicio)
-        html += f"""
-        <div class="card">
-            <div class="numero">Paciente: {_nombre_paciente_cita(cita)} | Número: {numero}</div>
-            <div class="fecha">Cita: {cita.fecha_cita} {hora_inicio.strftime('%H:%M')}</div>
-            <div class="mensaje">{mensaje}</div>
-            <a class="btn" target="_blank" href="{wa_url}">Enviar WhatsApp manual</a>
-            <a class="btn secondary" target="_blank" href="/recordatorios/whatsapp/cita/{cita.id_cita}/abrir/">Abrir y registrar</a>
-        </div>
-        """
-        total_mostrados += 1
-
-    if total_mostrados == 0:
-        html += '<div class="empty">No hay citas de hoy o mañana con teléfono registrado.</div>'
 
     html += """
     </body>
@@ -2178,395 +2087,417 @@ def listar_recordatorios_whatsapp(request):
 
 @rol_requerido(['Administrador', 'Recepción'])
 def abrir_recordatorio_whatsapp(request, id_recordatorio):
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT destinatario, mensaje
-                FROM recordatorios
-                WHERE id_recordatorio = %s
-                  AND canal = %s
-            """, [id_recordatorio, 'whatsapp'])
-            recordatorio = cursor.fetchone()
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                destinatario,
+                mensaje
+            FROM recordatorios
+            WHERE id_recordatorio = %s
+              AND canal = 'whatsapp'
+        """, [id_recordatorio])
 
-        if not recordatorio:
-            return HttpResponse('Recordatorio no encontrado', status=404)
+        recordatorio = cursor.fetchone()
 
-        destinatario, mensaje = recordatorio
-        numero_limpio = limpiar_numero_whatsapp(destinatario)
-        mensaje_codificado = quote(str(mensaje))
-        url_whatsapp = f"https://wa.me/{numero_limpio}?text={mensaje_codificado}"
+    if not recordatorio:
+        return HttpResponse("Recordatorio no encontrado", status=404)
 
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                UPDATE recordatorios
-                SET estado_envio = %s
-                WHERE id_recordatorio = %s
-            """, ['enviado', id_recordatorio])
+    destinatario = recordatorio[0]
+    mensaje = recordatorio[1]
 
-        return redirect(url_whatsapp)
-    except Exception as e:
-        return HttpResponse(f"Error abriendo WhatsApp: {str(e)}", status=500)
+    numero_limpio = limpiar_numero_whatsapp(destinatario)
+    mensaje_codificado = quote(str(mensaje))
 
+    url_whatsapp = f"https://wa.me/{numero_limpio}?text={mensaje_codificado}"
 
-@rol_requerido(['Administrador', 'Recepción'])
-def abrir_whatsapp_cita(request, id_cita):
-    cita = get_object_or_404(
-        Citas.objects.select_related('id_paciente', 'id_estado_cita'),
-        id_cita=id_cita
-    )
-
-    if not cita.id_paciente or not cita.id_paciente.telefono:
-        return HttpResponse('La cita no tiene teléfono de paciente registrado.', status=400)
-
-    mensaje = _mensaje_cita_recordatorio(cita)
-    numero_limpio = limpiar_numero_whatsapp(cita.id_paciente.telefono)
-    url_whatsapp = f"https://wa.me/{numero_limpio}?text={quote(str(mensaje))}"
-
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                INSERT INTO recordatorios (
-                    id_cita,
-                    canal,
-                    tipo_recordatorio,
-                    destinatario,
-                    mensaje,
-                    fecha_programada,
-                    estado_envio
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, [
-                cita.id_cita,
-                'whatsapp',
-                'manual_dashboard',
-                cita.id_paciente.telefono,
-                mensaje,
-                datetime.now(),
-                'enviado'
-            ])
-    except Exception as e:
-        print('NO SE PUDO REGISTRAR WHATSAPP MANUAL:', e)
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            UPDATE recordatorios
+            SET estado_envio = 'enviado'
+            WHERE id_recordatorio = %s
+        """, [id_recordatorio])
 
     return redirect(url_whatsapp)
 
 
+
 @rol_requerido(['Administrador', 'Recepción'])
 def generar_recordatorios_automaticos(request):
-    """
-    Genera recordatorios manuales para citas de hoy y mañana.
-    Se crean como pendientes desde ahora, para que los botones de correo/WhatsApp los encuentren de inmediato.
-    """
     creados = 0
     omitidos = 0
     errores = 0
 
-    try:
-        citas = _citas_recordatorio_qs()
-        fecha_programada = datetime.now()
+    def convertir_hora(valor):
+        if isinstance(valor, time):
+            return valor
 
-        for cita in citas:
-            try:
-                if not cita.id_paciente:
+        if isinstance(valor, timedelta):
+            segundos = int(valor.total_seconds())
+            horas = segundos // 3600
+            minutos = (segundos % 3600) // 60
+            segundos = segundos % 60
+            return time(horas, minutos, segundos)
+
+        if isinstance(valor, str):
+            partes = valor.split(":")
+            horas = int(partes[0])
+            minutos = int(partes[1]) if len(partes) > 1 else 0
+            segundos = int(partes[2]) if len(partes) > 2 else 0
+            return time(horas, minutos, segundos)
+
+        return time(8, 0, 0)
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                c.id_cita,
+                c.id_paciente,
+                c.fecha_cita,
+                c.hora_inicio,
+                c.modalidad,
+                c.razon_consulta_detalle,
+                p.nombres,
+                p.apellidos,
+                p.telefono,
+                p.correo
+            FROM citas c
+            INNER JOIN pacientes p ON c.id_paciente = p.id_paciente
+            WHERE c.fecha_cita >= CURDATE()
+            ORDER BY c.fecha_cita ASC, c.hora_inicio ASC
+        """)
+
+        citas = cursor.fetchall()
+
+    for cita in citas:
+        try:
+            id_cita = cita[0]
+            id_paciente = cita[1]
+            fecha_cita = cita[2]
+            hora_inicio = convertir_hora(cita[3])
+            modalidad = cita[4]
+            razon = cita[5]
+            nombres = cita[6]
+            apellidos = cita[7]
+            telefono = cita[8]
+            correo = cita[9]
+
+            fecha_hora_cita = datetime.combine(fecha_cita, hora_inicio)
+            nombre_completo = f"{nombres} {apellidos}".strip()
+
+            mensaje = (
+                f"Hola {nombre_completo}, le recordamos su cita médica "
+                f"programada para el {fecha_cita} a las {hora_inicio.strftime('%H:%M')}. "
+                f"Modalidad: {modalidad if modalidad else 'No registrada'}. "
+                f"Motivo: {razon if razon else 'Consulta médica'}. "
+                f"Clínica DS."
+            )
+
+            recordatorios = [
+                {
+                    "canal": "correo",
+                    "tipo": "1_dia_antes",
+                    "destinatario": correo,
+                    "fecha_programada": fecha_hora_cita - timedelta(days=1),
+                },
+                {
+                    "canal": "correo",
+                    "tipo": "3_horas_antes",
+                    "destinatario": correo,
+                    "fecha_programada": fecha_hora_cita - timedelta(hours=3),
+                },
+                {
+                    "canal": "whatsapp",
+                    "tipo": "1_dia_antes",
+                    "destinatario": telefono,
+                    "fecha_programada": fecha_hora_cita - timedelta(days=1),
+                },
+                {
+                    "canal": "whatsapp",
+                    "tipo": "3_horas_antes",
+                    "destinatario": telefono,
+                    "fecha_programada": fecha_hora_cita - timedelta(hours=3),
+                },
+            ]
+
+            for r in recordatorios:
+                if not r["destinatario"]:
                     omitidos += 1
                     continue
 
-                mensaje = _mensaje_cita_recordatorio(cita)
-                canales = [
-                    ('correo', 'manual_dashboard', cita.id_paciente.correo),
-                    ('whatsapp', 'manual_dashboard', cita.id_paciente.telefono),
-                ]
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT COUNT(*)
+                        FROM recordatorios
+                        WHERE id_cita = %s
+                          AND canal = %s
+                          AND tipo_recordatorio = %s
+                    """, [id_cita, r["canal"], r["tipo"]])
 
-                for canal, tipo, destinatario in canales:
-                    if not destinatario:
-                        omitidos += 1
-                        continue
+                    existe = cursor.fetchone()[0]
 
-                    with connection.cursor() as cursor:
-                        cursor.execute("""
-                            SELECT COUNT(*)
-                            FROM recordatorios
-                            WHERE id_cita = %s
-                              AND canal = %s
-                              AND tipo_recordatorio = %s
-                              AND estado_envio = %s
-                        """, [cita.id_cita, canal, tipo, 'pendiente'])
-                        existe = cursor.fetchone()[0]
+                if existe:
+                    omitidos += 1
+                    continue
 
-                    if existe:
-                        omitidos += 1
-                        continue
-
-                    with connection.cursor() as cursor:
-                        cursor.execute("""
-                            INSERT INTO recordatorios (
-                                id_cita,
-                                canal,
-                                tipo_recordatorio,
-                                destinatario,
-                                mensaje,
-                                fecha_programada,
-                                estado_envio
-                            )
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """, [
-                            cita.id_cita,
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO recordatorios (
+                            id_cita,
                             canal,
-                            tipo,
+                            tipo_recordatorio,
                             destinatario,
                             mensaje,
                             fecha_programada,
-                            'pendiente'
-                        ])
+                            estado_envio
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, 'pendiente')
+                    """, [
+                        id_cita,
+                        r["canal"],
+                        r["tipo"],
+                        r["destinatario"],
+                        mensaje,
+                        r["fecha_programada"]
+                    ])
 
-                    creados += 1
+                creados += 1
 
-            except Exception as e:
-                errores += 1
-                print('ERROR GENERANDO RECORDATORIO:', e)
+        except Exception as e:
+            errores += 1
+            print("ERROR GENERANDO RECORDATORIO:", e)
 
-        return HttpResponse(
-            f"Recordatorios generados. Creados: {creados}. Omitidos: {omitidos}. Errores: {errores}."
-        )
-
-    except Exception as e:
-        return HttpResponse(f"Error al generar recordatorios: {str(e)}", status=500)
-
+    return HttpResponse(
+        f"Recordatorios generados. Creados: {creados}. Omitidos: {omitidos}. Errores: {errores}."
+    )
 
 
 def api_dashboard_recordatorios(request):
-    """
-    Dashboard corregido para producción en Render/PostgreSQL.
-    No usa funciones MySQL como CURDATE(), DATE_ADD(), MONTH() o YEAR().
-    Además evita error 500: si algo falla, devuelve el error en el JSON para poder diagnosticarlo.
-    """
-    try:
-        from decimal import Decimal
-        from zoneinfo import ZoneInfo
-
-        def to_float(value):
-            if value is None:
-                return 0.0
-            if isinstance(value, Decimal):
-                return float(value)
-            try:
-                return float(value)
-            except Exception:
-                return 0.0
-
-        def estado_no_cancelado(qs):
-            return qs.exclude(id_estado_cita__nombre_estado__iexact='Cancelada').exclude(
-                id_estado_cita__nombre_estado__iexact='Cancelado'
-            )
-
-        def nombre_paciente(paciente):
-            if not paciente:
-                return ''
-            return f"{paciente.nombres or ''} {paciente.apellidos or ''}".strip()
-
-        def nombre_doctor(doctor):
-            if not doctor or not doctor.id_usuario:
-                return ''
-            return f"{doctor.id_usuario.nombres or ''} {doctor.id_usuario.apellidos or ''}".strip()
-
-        try:
-            ahora_gt = datetime.now(ZoneInfo("America/Guatemala"))
-        except Exception:
-            ahora_gt = datetime.now()
-        hoy = ahora_gt.date()
-        hace_7_dias_dt = datetime.now() - timedelta(days=7)
-        fin_7_dias = hoy + timedelta(days=7)
-
-        citas_base = Citas.objects.select_related(
-            'id_paciente',
-            'id_doctor__id_usuario',
-            'id_estado_cita'
-        )
-
-        citas_validas = estado_no_cancelado(citas_base)
-
-        pagos_base = Pagos.objects.select_related(
-            'id_paciente',
-            'id_cita',
-            'id_tipo_pago'
-        )
-
-        pagos_mes_qs = pagos_base.filter(
-            fecha_pago__isnull=False,
-            fecha_pago__year=hoy.year,
-            fecha_pago__month=hoy.month
-        )
-
-        ingresos_semanales = pagos_base.filter(
-            fecha_pago__isnull=False,
-            fecha_pago__gte=hace_7_dias_dt
-        ).aggregate(total=Sum('monto'))['total'] or 0
-
-        ingresos_mes = pagos_mes_qs.aggregate(total=Sum('monto'))['total'] or 0
-
-        ultimo_pago_obj = pagos_base.order_by('-fecha_pago', '-id_pago').first()
-        ultimo_pago = to_float(ultimo_pago_obj.monto) if ultimo_pago_obj else 0
-
-        total_citas_mes = citas_base.filter(
-            fecha_cita__isnull=False,
-            fecha_cita__year=hoy.year,
-            fecha_cita__month=hoy.month
-        ).count()
-
-        canceladas_mes = citas_base.filter(
-            fecha_cita__isnull=False,
-            fecha_cita__year=hoy.year,
-            fecha_cita__month=hoy.month,
-            id_estado_cita__nombre_estado__iexact='Cancelada'
-        ).count() + citas_base.filter(
-            fecha_cita__isnull=False,
-            fecha_cita__year=hoy.year,
-            fecha_cita__month=hoy.month,
-            id_estado_cita__nombre_estado__iexact='Cancelado'
-        ).count()
-
-        tasa_cancelaciones = round((canceladas_mes / total_citas_mes) * 100, 2) if total_citas_mes else 0
-
-        citas_con_pago_ids = list(
-            Pagos.objects.exclude(id_cita__isnull=True).values_list('id_cita_id', flat=True)
-        )
-
-        citas_pasadas_sin_pago = estado_no_cancelado(
-            citas_base.filter(fecha_cita__lt=hoy)
-        ).exclude(id_cita__in=citas_con_pago_ids)
-
-        data = {
-            "ok": True,
-            "citas_hoy": citas_validas.filter(fecha_cita=hoy).count(),
-            "citas_proximos_7_dias": citas_validas.filter(fecha_cita__gte=hoy, fecha_cita__lte=fin_7_dias).count(),
-            "pacientes_con_deuda": citas_pasadas_sin_pago.values('id_paciente').distinct().count(),
-            "ingresos_semanales": to_float(ingresos_semanales),
-            "ingresos_mes": to_float(ingresos_mes),
-            "pagos_mes": pagos_mes_qs.count(),
-            "ultimo_pago": ultimo_pago,
-            "tasa_cancelaciones": tasa_cancelaciones,
-            "canceladas_mes": canceladas_mes,
-            "total_citas_mes": total_citas_mes,
-            "correos_pendientes": 0,
-            "whatsapp_pendientes": 0,
-            "total_recordatorios_pendientes": 0,
-            "recordatorios_pendientes": [],
-            "pagos_recientes": [],
-            "citas_proximas": [],
-            "pacientes_pendientes_pago": [],
-            "citas_estado_mes": [],
-            "ultima_actualizacion_servidor": ahora_gt.strftime('%H:%M:%S'),
-            "debug_total_citas": Citas.objects.count(),
-            "debug_total_pagos": Pagos.objects.count(),
-            "debug_hoy_gt": str(hoy),
-        }
-
-        for p in pagos_mes_qs.order_by('-fecha_pago', '-id_pago')[:8]:
-            data["pagos_recientes"].append({
-                "id_pago": p.id_pago,
-                "paciente": nombre_paciente(p.id_paciente),
-                "monto": to_float(p.monto),
-                "fecha_pago": p.fecha_pago.strftime('%Y-%m-%d %H:%M') if p.fecha_pago else '',
-                "tipo_pago": p.id_tipo_pago.nombre_tipo_pago if p.id_tipo_pago else 'Sin tipo'
-            })
-
-        for c in citas_validas.filter(fecha_cita__gte=hoy, fecha_cita__lte=fin_7_dias).order_by('fecha_cita', 'hora_inicio')[:8]:
-            data["citas_proximas"].append({
-                "id_cita": c.id_cita,
-                "paciente": nombre_paciente(c.id_paciente),
-                "doctor": nombre_doctor(c.id_doctor),
-                "fecha_cita": str(c.fecha_cita) if c.fecha_cita else '',
-                "hora_inicio": str(c.hora_inicio)[:5] if c.hora_inicio else '',
-                "estado": c.id_estado_cita.nombre_estado if c.id_estado_cita else 'Sin estado'
-            })
-
-        for c in citas_pasadas_sin_pago.order_by('-fecha_cita', '-hora_inicio')[:8]:
-            data["pacientes_pendientes_pago"].append({
-                "id_cita": c.id_cita,
-                "paciente": nombre_paciente(c.id_paciente),
-                "fecha_cita": str(c.fecha_cita) if c.fecha_cita else '',
-                "hora_inicio": str(c.hora_inicio)[:5] if c.hora_inicio else '',
-                "estado": c.id_estado_cita.nombre_estado if c.id_estado_cita else 'Sin estado'
-            })
-
-        estados_mes = citas_base.filter(
-            fecha_cita__isnull=False,
-            fecha_cita__year=hoy.year,
-            fecha_cita__month=hoy.month
-        ).values('id_estado_cita__nombre_estado').annotate(total=Count('id_cita')).order_by('-total')
-
-        for item in estados_mes:
-            data["citas_estado_mes"].append({
-                "estado": item.get('id_estado_cita__nombre_estado') or 'Sin estado',
-                "total": int(item.get('total') or 0)
-            })
-
+    def fetchone_val(sql, params=None, default=0):
         try:
             with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT COUNT(*) FROM recordatorios
-                    WHERE canal = %s AND estado_envio = %s
-                """, ['correo', 'pendiente'])
-                data["correos_pendientes"] = int(cursor.fetchone()[0] or 0)
-
-                cursor.execute("""
-                    SELECT COUNT(*) FROM recordatorios
-                    WHERE canal = %s AND estado_envio = %s
-                """, ['whatsapp', 'pendiente'])
-                data["whatsapp_pendientes"] = int(cursor.fetchone()[0] or 0)
-
-                cursor.execute("""
-                    SELECT id_recordatorio, canal, tipo_recordatorio, destinatario, mensaje, fecha_programada, estado_envio
-                    FROM recordatorios
-                    WHERE estado_envio = %s
-                    ORDER BY fecha_programada ASC
-                    LIMIT 8
-                """, ['pendiente'])
-                filas = cursor.fetchall()
-
-            data["total_recordatorios_pendientes"] = data["correos_pendientes"] + data["whatsapp_pendientes"]
-
-            for fila in filas:
-                data["recordatorios_pendientes"].append({
-                    "id_recordatorio": fila[0],
-                    "canal": fila[1],
-                    "tipo_recordatorio": fila[2],
-                    "destinatario": fila[3],
-                    "mensaje": fila[4],
-                    "fecha_programada": str(fila[5]) if fila[5] else '',
-                    "estado_envio": fila[6],
-                })
+                cursor.execute(sql, params or [])
+                row = cursor.fetchone()
+            if not row or row[0] is None:
+                return default
+            return row[0]
         except Exception as e:
-            try:
-                connection.rollback()
-            except Exception:
-                pass
-            data["debug_error_recordatorios"] = str(e)
+            print("ERROR DASHBOARD fetchone:", e, sql)
+            return default
 
-        return JsonResponse(data, json_dumps_params={'ensure_ascii': False})
+    def fetchall(sql, params=None):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, params or [])
+                return cursor.fetchall()
+        except Exception as e:
+            print("ERROR DASHBOARD fetchall:", e, sql)
+            return []
 
-    except Exception as e:
-        import traceback
-        return JsonResponse({
-            "ok": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-            "citas_hoy": 0,
-            "citas_proximos_7_dias": 0,
-            "pacientes_con_deuda": 0,
-            "ingresos_semanales": 0,
-            "ingresos_mes": 0,
-            "pagos_mes": 0,
-            "ultimo_pago": 0,
-            "tasa_cancelaciones": 0,
-            "canceladas_mes": 0,
-            "total_citas_mes": 0,
-            "correos_pendientes": 0,
-            "whatsapp_pendientes": 0,
-            "total_recordatorios_pendientes": 0,
-            "recordatorios_pendientes": [],
-            "pagos_recientes": [],
-            "citas_proximas": [],
-            "pacientes_pendientes_pago": [],
-            "citas_estado_mes": [],
-            "ultima_actualizacion_servidor": datetime.now().strftime('%H:%M:%S')
-        }, json_dumps_params={'ensure_ascii': False})
+    data = {
+        "citas_hoy": 0,
+        "citas_proximos_7_dias": 0,
+        "pacientes_con_deuda": 0,
+        "ingresos_semanales": 0,
+        "ingresos_mes": 0,
+        "pagos_mes": 0,
+        "ultimo_pago": 0,
+        "tasa_cancelaciones": 0,
+        "canceladas_mes": 0,
+        "total_citas_mes": 0,
+        "correos_pendientes": 0,
+        "whatsapp_pendientes": 0,
+        "total_recordatorios_pendientes": 0,
+        "recordatorios_pendientes": [],
+        "pagos_recientes": [],
+        "citas_proximas": [],
+        "pacientes_pendientes_pago": [],
+        "citas_estado_mes": [],
+        "ultima_actualizacion_servidor": datetime.now().strftime('%H:%M:%S')
+    }
+
+    data["citas_hoy"] = int(fetchone_val("""
+        SELECT COUNT(*)
+        FROM citas c
+        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
+        WHERE c.fecha_cita = CURDATE()
+          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
+    """))
+
+    data["citas_proximos_7_dias"] = int(fetchone_val("""
+        SELECT COUNT(*)
+        FROM citas c
+        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
+        WHERE c.fecha_cita BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
+    """))
+
+    data["ingresos_semanales"] = float(fetchone_val("""
+        SELECT COALESCE(SUM(monto), 0)
+        FROM pagos
+        WHERE fecha_pago IS NOT NULL
+          AND fecha_pago >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+    """, default=0) or 0)
+
+    data["ingresos_mes"] = float(fetchone_val("""
+        SELECT COALESCE(SUM(monto), 0)
+        FROM pagos
+        WHERE fecha_pago IS NOT NULL
+          AND MONTH(fecha_pago) = MONTH(CURDATE())
+          AND YEAR(fecha_pago) = YEAR(CURDATE())
+    """, default=0) or 0)
+
+    data["pagos_mes"] = int(fetchone_val("""
+        SELECT COUNT(*)
+        FROM pagos
+        WHERE fecha_pago IS NOT NULL
+          AND MONTH(fecha_pago) = MONTH(CURDATE())
+          AND YEAR(fecha_pago) = YEAR(CURDATE())
+    """))
+
+    data["ultimo_pago"] = float(fetchone_val("""
+        SELECT COALESCE(monto, 0)
+        FROM pagos
+        ORDER BY fecha_pago DESC, id_pago DESC
+        LIMIT 1
+    """, default=0) or 0)
+
+    data["total_citas_mes"] = int(fetchone_val("""
+        SELECT COUNT(*)
+        FROM citas
+        WHERE fecha_cita IS NOT NULL
+          AND MONTH(fecha_cita) = MONTH(CURDATE())
+          AND YEAR(fecha_cita) = YEAR(CURDATE())
+    """))
+
+    data["canceladas_mes"] = int(fetchone_val("""
+        SELECT COUNT(*)
+        FROM citas c
+        INNER JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
+        WHERE c.fecha_cita IS NOT NULL
+          AND MONTH(c.fecha_cita) = MONTH(CURDATE())
+          AND YEAR(c.fecha_cita) = YEAR(CURDATE())
+          AND LOWER(e.nombre_estado) IN ('cancelada', 'cancelado')
+    """))
+
+    data["tasa_cancelaciones"] = round((data["canceladas_mes"] / data["total_citas_mes"]) * 100, 2) if data["total_citas_mes"] else 0
+
+    data["pacientes_con_deuda"] = int(fetchone_val("""
+        SELECT COUNT(DISTINCT c.id_paciente)
+        FROM citas c
+        LEFT JOIN pagos p ON c.id_cita = p.id_cita
+        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
+        WHERE c.fecha_cita < CURDATE()
+          AND p.id_pago IS NULL
+          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
+    """))
+
+    data["correos_pendientes"] = int(fetchone_val("""
+        SELECT COUNT(*)
+        FROM recordatorios
+        WHERE canal = 'correo'
+          AND estado_envio = 'pendiente'
+    """))
+
+    data["whatsapp_pendientes"] = int(fetchone_val("""
+        SELECT COUNT(*)
+        FROM recordatorios
+        WHERE canal = 'whatsapp'
+          AND estado_envio = 'pendiente'
+    """))
+
+    data["total_recordatorios_pendientes"] = data["correos_pendientes"] + data["whatsapp_pendientes"]
+
+    for fila in fetchall("""
+        SELECT id_recordatorio, canal, tipo_recordatorio, destinatario, mensaje, fecha_programada, estado_envio
+        FROM recordatorios
+        WHERE estado_envio = 'pendiente'
+        ORDER BY fecha_programada ASC
+        LIMIT 8
+    """):
+        data["recordatorios_pendientes"].append({
+            "id_recordatorio": fila[0],
+            "canal": fila[1],
+            "tipo_recordatorio": fila[2],
+            "destinatario": fila[3],
+            "mensaje": fila[4],
+            "fecha_programada": str(fila[5]) if fila[5] else '',
+            "estado_envio": fila[6],
+        })
+
+    for fila in fetchall("""
+        SELECT p.id_pago, pa.nombres, pa.apellidos, p.monto, p.fecha_pago, COALESCE(tp.nombre_tipo_pago, 'Sin tipo')
+        FROM pagos p
+        LEFT JOIN pacientes pa ON p.id_paciente = pa.id_paciente
+        LEFT JOIN tipos_pago tp ON p.id_tipo_pago = tp.id_tipo_pago
+        WHERE p.fecha_pago IS NOT NULL
+          AND MONTH(p.fecha_pago) = MONTH(CURDATE())
+          AND YEAR(p.fecha_pago) = YEAR(CURDATE())
+        ORDER BY p.fecha_pago DESC, p.id_pago DESC
+        LIMIT 8
+    """):
+        data["pagos_recientes"].append({
+            "id_pago": fila[0],
+            "paciente": f"{fila[1] or ''} {fila[2] or ''}".strip(),
+            "monto": float(fila[3] or 0),
+            "fecha_pago": fila[4].strftime('%Y-%m-%d %H:%M') if fila[4] else '',
+            "tipo_pago": fila[5] or ''
+        })
+
+    for fila in fetchall("""
+        SELECT c.id_cita, pa.nombres, pa.apellidos, ud.nombres, ud.apellidos, c.fecha_cita, c.hora_inicio,
+               COALESCE(e.nombre_estado, 'Sin estado') AS estado
+        FROM citas c
+        LEFT JOIN pacientes pa ON c.id_paciente = pa.id_paciente
+        LEFT JOIN doctores d ON c.id_doctor = d.id_doctor
+        LEFT JOIN usuarios ud ON d.id_usuario = ud.id_usuario
+        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
+        WHERE c.fecha_cita BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
+        ORDER BY c.fecha_cita ASC, c.hora_inicio ASC
+        LIMIT 8
+    """):
+        data["citas_proximas"].append({
+            "id_cita": fila[0],
+            "paciente": f"{fila[1] or ''} {fila[2] or ''}".strip(),
+            "doctor": f"{fila[3] or ''} {fila[4] or ''}".strip(),
+            "fecha_cita": str(fila[5]) if fila[5] else '',
+            "hora_inicio": str(fila[6])[:5] if fila[6] else '',
+            "estado": fila[7] or ''
+        })
+
+    for fila in fetchall("""
+        SELECT c.id_cita, pa.nombres, pa.apellidos, c.fecha_cita, c.hora_inicio, COALESCE(e.nombre_estado, 'Sin estado')
+        FROM citas c
+        LEFT JOIN pagos p ON c.id_cita = p.id_cita
+        LEFT JOIN pacientes pa ON c.id_paciente = pa.id_paciente
+        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
+        WHERE c.fecha_cita < CURDATE()
+          AND p.id_pago IS NULL
+          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
+        ORDER BY c.fecha_cita DESC, c.hora_inicio DESC
+        LIMIT 8
+    """):
+        data["pacientes_pendientes_pago"].append({
+            "id_cita": fila[0],
+            "paciente": f"{fila[1] or ''} {fila[2] or ''}".strip(),
+            "fecha_cita": str(fila[3]) if fila[3] else '',
+            "hora_inicio": str(fila[4])[:5] if fila[4] else '',
+            "estado": fila[5] or ''
+        })
+
+    for fila in fetchall("""
+        SELECT COALESCE(e.nombre_estado, 'Sin estado') AS estado, COUNT(c.id_cita) AS total
+        FROM citas c
+        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
+        WHERE c.fecha_cita IS NOT NULL
+          AND MONTH(c.fecha_cita) = MONTH(CURDATE())
+          AND YEAR(c.fecha_cita) = YEAR(CURDATE())
+        GROUP BY estado
+        ORDER BY total DESC
+    """):
+        data["citas_estado_mes"].append({
+            "estado": fila[0] or 'Sin estado',
+            "total": int(fila[1] or 0)
+        })
+
+    return JsonResponse(data, json_dumps_params={'ensure_ascii': False})
