@@ -16,16 +16,16 @@ ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@nubnest.com")
 
 with connection.cursor() as cursor:
     cursor.execute("""
-        INSERT INTO roles (descripcion, activo)
-        SELECT 'Administrador', 1
+        INSERT INTO roles (nombre_rol, descripcion, activo)
+        SELECT 'Administrador', 'Administrador', 1
         WHERE NOT EXISTS (
-            SELECT 1 FROM roles WHERE descripcion = 'Administrador'
+            SELECT 1 FROM roles WHERE nombre_rol = 'Administrador'
         );
     """)
 
     cursor.execute("""
         SELECT id_rol FROM roles
-        WHERE descripcion = 'Administrador'
+        WHERE nombre_rol = 'Administrador'
         LIMIT 1;
     """)
     rol = cursor.fetchone()
