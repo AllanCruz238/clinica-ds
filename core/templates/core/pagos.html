@@ -198,6 +198,7 @@
               <th>Fecha</th>
               <th>Referencia</th>
               <th>Observaciones</th>
+              <th>Acciones</th>
             </tr>
           </thead>
 
@@ -210,7 +211,7 @@
   <div class="modal-backdrop" id="modalPago">
     <div class="modal">
       <div class="modal-header">
-        <h3>Nuevo pago</h3>
+        <h3 id="tituloModalPago">Nuevo pago</h3>
         <button class="close-btn" onclick="cerrarModalPago()">×</button>
       </div>
 
@@ -248,15 +249,37 @@
 
       <div class="modal-actions">
         <button class="btn secondary" onclick="cerrarModalPago()">Cancelar</button>
-        <button class="btn" onclick="guardarPago()">Guardar pago</button>
+        <button class="btn" id="btnGuardarPago" onclick="guardarPago()">Guardar pago</button>
       </div>
 
       <div class="mensaje" id="mensajePago"></div>
     </div>
   </div>
 
+  <div class="modal-backdrop" id="modalEliminarPago">
+    <div class="modal" style="max-width:520px !important;">
+      <div class="modal-header">
+        <h3>Eliminar pago</h3>
+        <button class="close-btn" onclick="cerrarModalEliminarPago()">×</button>
+      </div>
+
+      <p id="textoEliminarPago" style="color:var(--text); margin-bottom:14px;">
+        ¿Deseas eliminar este pago?
+      </p>
+
+      <div class="modal-actions">
+        <button class="btn secondary" onclick="cerrarModalEliminarPago()">Cancelar</button>
+        <button class="btn danger" onclick="confirmarEliminarPago()">Sí, eliminar</button>
+      </div>
+
+      <div class="mensaje" id="mensajeEliminarPago"></div>
+    </div>
+  </div>
+
   <script>
     let pagosData = [];
+    let pagoEditandoId = null;
+    let pagoEliminandoId = null;
 
     async function cargarPagos() {
       const res = await fetch('/api/pagos/');
@@ -271,6 +294,15 @@
       const tbody = document.getElementById('tablaPagos');
       tbody.innerHTML = '';
 
+      if (!data.length) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="9" class="empty">No hay pagos registrados.</td>
+          </tr>
+        `;
+        return;
+      }
+
       data.forEach(p => {
         tbody.innerHTML += `
           <tr>
@@ -280,8 +312,14 @@
             <td>${p.tipo_pago}</td>
             <td class="monto">Q${Number(p.monto).toFixed(2)}</td>
             <td>${p.fecha_pago}</td>
-            <td>${p.referencia_pago}</td>
-            <td>${p.observaciones}</td>
+            <td>${p.referencia_pago || ''}</td>
+            <td>${p.observaciones || ''}</td>
+            <td>
+              <div class="actions">
+                <button class="btn secondary" onclick="abrirEditarPago(${p.id_pago})">Editar</button>
+                <button class="btn danger" onclick="abrirEliminarPago(${p.id_pago})">Eliminar</button>
+              </div>
+            </td>
           </tr>
         `;
       });
@@ -334,12 +372,40 @@
     }
 
     function abrirModalPago() {
+      pagoEditandoId = null;
+      document.getElementById('tituloModalPago').textContent = 'Nuevo pago';
+      document.getElementById('btnGuardarPago').textContent = 'Guardar pago';
       document.getElementById('modalPago').style.display = 'flex';
       document.getElementById('mensajePago').textContent = '';
+      limpiarFormularioPago();
+    }
+
+    function abrirEditarPago(idPago) {
+      const pago = pagosData.find(p => Number(p.id_pago) === Number(idPago));
+
+      if (!pago) {
+        alert('No se encontró el pago seleccionado.');
+        return;
+      }
+
+      pagoEditandoId = idPago;
+      document.getElementById('tituloModalPago').textContent = 'Editar pago';
+      document.getElementById('btnGuardarPago').textContent = 'Guardar cambios';
+
+      document.getElementById('id_paciente').value = pago.id_paciente || '';
+      document.getElementById('id_cita').value = pago.id_cita || '';
+      document.getElementById('id_tipo_pago').value = pago.id_tipo_pago || '';
+      document.getElementById('monto').value = pago.monto || '';
+      document.getElementById('referencia_pago').value = pago.referencia_pago || '';
+      document.getElementById('observaciones').value = pago.observaciones || '';
+
+      document.getElementById('mensajePago').textContent = '';
+      document.getElementById('modalPago').style.display = 'flex';
     }
 
     function cerrarModalPago() {
       document.getElementById('modalPago').style.display = 'none';
+      pagoEditandoId = null;
       limpiarFormularioPago();
     }
 
@@ -352,7 +418,48 @@
       document.getElementById('observaciones').value = '';
     }
 
+    function abrirEliminarPago(idPago) {
+      const pago = pagosData.find(p => Number(p.id_pago) === Number(idPago));
+      pagoEliminandoId = idPago;
+
+      const texto = pago
+        ? `¿Deseas eliminar el pago #${pago.id_pago} de ${pago.paciente} por Q${Number(pago.monto || 0).toFixed(2)}?`
+        : '¿Deseas eliminar este pago?';
+
+      document.getElementById('textoEliminarPago').textContent = texto;
+      document.getElementById('mensajeEliminarPago').textContent = '';
+      document.getElementById('modalEliminarPago').style.display = 'flex';
+    }
+
+    function cerrarModalEliminarPago() {
+      document.getElementById('modalEliminarPago').style.display = 'none';
+      pagoEliminandoId = null;
+      document.getElementById('mensajeEliminarPago').textContent = '';
+    }
+
+    async function confirmarEliminarPago() {
+      if (!pagoEliminandoId) return;
+
+      const res = await fetch(`/api/pagos/${pagoEliminandoId}/eliminar/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        await cargarPagos();
+        cerrarModalEliminarPago();
+      } else {
+        document.getElementById('mensajeEliminarPago').textContent = data.error || 'No se pudo eliminar el pago.';
+      }
+    }
+
     async function guardarPago() {
+      const btn = document.getElementById('btnGuardarPago');
+
       const payload = {
         id_paciente: document.getElementById('id_paciente').value,
         id_cita: document.getElementById('id_cita').value,
@@ -367,25 +474,42 @@
         return;
       }
 
-      const res = await fetch('/api/pagos/crear/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
+      const url = pagoEditandoId
+        ? `/api/pagos/${pagoEditandoId}/actualizar/`
+        : '/api/pagos/crear/';
 
-      const data = await res.json();
+      btn.disabled = true;
+      btn.textContent = pagoEditandoId ? 'Guardando...' : 'Registrando...';
 
-      if (data.ok) {
-        document.getElementById('mensajePago').textContent = 'Pago guardado correctamente.';
-        await cargarPagos();
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
 
-        setTimeout(() => {
-          cerrarModalPago();
-        }, 700);
-      } else {
-        document.getElementById('mensajePago').textContent = data.error || 'Ocurrió un error.';
+        const data = await res.json();
+
+        if (data.ok) {
+          document.getElementById('mensajePago').textContent = pagoEditandoId
+            ? 'Pago actualizado correctamente.'
+            : 'Pago guardado correctamente.';
+
+          await cargarPagos();
+
+          setTimeout(() => {
+            cerrarModalPago();
+          }, 500);
+        } else {
+          document.getElementById('mensajePago').textContent = data.error || 'Ocurrió un error.';
+        }
+      } catch (e) {
+        document.getElementById('mensajePago').textContent = 'No se pudo conectar con el servidor.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = pagoEditandoId ? 'Guardar cambios' : 'Guardar pago';
       }
     }
 

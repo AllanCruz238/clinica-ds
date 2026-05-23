@@ -34,6 +34,8 @@ urlpatterns = [
     path('api/pagos/', views.pagos_json, name='pagos_json'),
     path('api/pagos/catalogos/', views.pagos_catalogos_json, name='pagos_catalogos_json'),
     path('api/pagos/crear/', views.crear_pago_json, name='crear_pago_json'),
+    path('api/pagos/<int:id_pago>/actualizar/', views.actualizar_pago_json, name='actualizar_pago_json'),
+    path('api/pagos/<int:id_pago>/eliminar/', views.eliminar_pago_json, name='eliminar_pago_json'),
 
     # Notas clínicas
     path('notas/', views.notas_page, name='notas'),
