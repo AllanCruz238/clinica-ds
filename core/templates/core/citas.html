@@ -304,15 +304,20 @@
 
         <div class="form-group">
           <label for="fecha_cita">Fecha</label>
-          <input type="date" id="fecha_cita" onclick="abrirSelector(this)">
+          <input type="date" id="fecha_cita" onclick="abrirSelector(this)" onchange="onFechaCitaChange()">
         </div>
 
         <div class="form-group">
           <label for="modalidad">Modalidad</label>
-          <select id="modalidad">
+          <select id="modalidad" onchange="onModalidadChange()">
             <option value="Presencial">Presencial</option>
             <option value="Virtual">Virtual</option>
           </select>
+        </div>
+
+        <div class="form-group full" id="jitsiLinkGroup" style="display:none;">
+          <label>Enlace de reunión (Jitsi Meet)</label>
+          <a id="jitsiLinkDisplay" href="#" target="_blank" style="color:var(--accent);word-break:break-all;font-size:13px;padding:8px 0;display:block;"></a>
         </div>
 
         <div class="form-group">
@@ -638,6 +643,7 @@
       document.getElementById('hora_inicio').value = `${String(horas24).padStart(2, '0')}:${String(horaPickerMinuto).padStart(2, '0')}`;
       actualizarTextoHoraInicio();
       calcularHoraFin();
+      onFechaCitaChange();
       cerrarSelectorHora();
     }
 
@@ -689,14 +695,6 @@
       });
     }
 
-    function llenarSelectEstados(items) {
-      const select = document.getElementById('id_estado_cita');
-      select.innerHTML = '<option value="">Seleccione</option>';
-      items.forEach(i => {
-        select.innerHTML += `<option value="${i.id_estado_cita}">${i.nombre_estado}</option>`;
-      });
-    }
-
     function llenarSelectMotivos(items) {
       const select = document.getElementById('id_motivo_consulta');
       select.innerHTML = '<option value="">Seleccione</option>';
@@ -735,6 +733,18 @@
       document.getElementById('razon_consulta_detalle').value = props.detalle || '';
       document.getElementById('observaciones').value = props.observaciones || '';
 
+      const linkJitsi = props.link_jitsi || '';
+      const jitsiGroup = document.getElementById('jitsiLinkGroup');
+      const jitsiLink = document.getElementById('jitsiLinkDisplay');
+      if (linkJitsi) {
+        jitsiGroup.style.display = 'block';
+        jitsiLink.href = linkJitsi;
+        jitsiLink.textContent = linkJitsi;
+      } else {
+        jitsiGroup.style.display = 'none';
+      }
+
+      onFechaCitaChange();
       document.getElementById('modalBackdrop').style.display = 'flex';
     }
 
@@ -758,6 +768,10 @@
       document.getElementById('modalidad').value = 'Presencial';
       document.getElementById('razon_consulta_detalle').value = '';
       document.getElementById('observaciones').value = '';
+      document.getElementById('jitsiLinkGroup').style.display = 'none';
+      document.getElementById('jitsiLinkDisplay').href = '#';
+      document.getElementById('jitsiLinkDisplay').textContent = '';
+      restaurarOpcionesEstado();
     }
 
     function calcularHoraFin() {
@@ -819,7 +833,16 @@
       const data = await res.json();
 
       if (data.ok) {
-        document.getElementById('mensajeModal').textContent = idCitaEditando ? 'Cita actualizada correctamente.' : 'Cita guardada correctamente.';
+        let msg = idCitaEditando ? 'Cita actualizada correctamente.' : 'Cita guardada correctamente.';
+        if (data.link_jitsi) {
+          msg += ` Enlace reunión: ${data.link_jitsi}`;
+          const jitsiGroup = document.getElementById('jitsiLinkGroup');
+          const jitsiLink = document.getElementById('jitsiLinkDisplay');
+          jitsiGroup.style.display = 'block';
+          jitsiLink.href = data.link_jitsi;
+          jitsiLink.textContent = data.link_jitsi;
+        }
+        document.getElementById('mensajeModal').textContent = msg;
         await calendar.refetchEvents();
 
         if (fechaDiaSeleccionado && document.getElementById('diaModalBackdrop').style.display === 'flex') {
@@ -832,9 +855,79 @@
 
         setTimeout(() => {
           cerrarModal();
-        }, 700);
+        }, data.link_jitsi ? 2000 : 700);
       } else {
         document.getElementById('mensajeModal').textContent = data.error || 'Ocurrió un error.';
+      }
+    }
+
+    let todosLosEstados = [];
+
+    function llenarSelectEstados(items) {
+      todosLosEstados = items;
+      const select = document.getElementById('id_estado_cita');
+      select.innerHTML = '<option value="">Seleccione</option>';
+      items.forEach(i => {
+        select.innerHTML += `<option value="${i.id_estado_cita}">${i.nombre_estado}</option>`;
+      });
+    }
+
+    function esFechaHoraPasada() {
+      const fechaVal = document.getElementById('fecha_cita').value;
+      const horaVal = document.getElementById('hora_inicio').value;
+      if (!fechaVal) return false;
+      const ahora = new Date();
+      const horaStr = horaVal || '00:00';
+      const dtCita = new Date(`${fechaVal}T${horaStr}:00`);
+      return dtCita < ahora;
+    }
+
+    function restaurarOpcionesEstado() {
+      const select = document.getElementById('id_estado_cita');
+      const valorActual = select.value;
+      select.innerHTML = '<option value="">Seleccione</option>';
+      todosLosEstados.forEach(i => {
+        select.innerHTML += `<option value="${i.id_estado_cita}">${i.nombre_estado}</option>`;
+      });
+      select.value = valorActual;
+    }
+
+    function filtrarEstadosPasados() {
+      const select = document.getElementById('id_estado_cita');
+      const valorActual = select.value;
+      const estadosPermitidos = ['cancelada', 'no asistió', 'no asistio'];
+      select.innerHTML = '<option value="">Seleccione</option>';
+      todosLosEstados.forEach(i => {
+        if (estadosPermitidos.includes(i.nombre_estado.toLowerCase())) {
+          select.innerHTML += `<option value="${i.id_estado_cita}">${i.nombre_estado}</option>`;
+        }
+      });
+      const opcionSigue = Array.from(select.options).some(o => o.value === valorActual);
+      select.value = opcionSigue ? valorActual : '';
+    }
+
+    function onFechaCitaChange() {
+      if (esFechaHoraPasada()) {
+        filtrarEstadosPasados();
+      } else {
+        restaurarOpcionesEstado();
+      }
+    }
+
+    function onModalidadChange() {
+      const modalidad = document.getElementById('modalidad').value;
+      const idCita = document.getElementById('id_cita_editando').value;
+      const jitsiGroup = document.getElementById('jitsiLinkGroup');
+      const jitsiLink = document.getElementById('jitsiLinkDisplay');
+      if (modalidad === 'Virtual' && idCita) {
+        const link = `https://meet.jit.si/ClinicaDS-${idCita}`;
+        jitsiGroup.style.display = 'block';
+        jitsiLink.href = link;
+        jitsiLink.textContent = link;
+      } else if (modalidad !== 'Virtual') {
+        jitsiGroup.style.display = 'none';
+        jitsiLink.href = '#';
+        jitsiLink.textContent = '';
       }
     }
 
@@ -877,6 +970,10 @@
         const item = document.createElement('div');
         item.className = 'detalle-item';
 
+        const jitsiHtml = props.link_jitsi
+          ? `<div class="detalle-item-line"><strong>Reunión:</strong> <a href="${escapeHtml(props.link_jitsi)}" target="_blank" style="color:var(--accent)">${escapeHtml(props.link_jitsi)}</a></div>`
+          : '';
+
         item.innerHTML = `
           <div class="detalle-item-title">
             <span>${escapeHtml(evento.title || 'Paciente')}</span>
@@ -888,6 +985,7 @@
           <div class="detalle-item-line"><strong>Motivo:</strong> ${escapeHtml(props.motivo || '-')}</div>
           <div class="detalle-item-line"><strong>Detalle:</strong> ${escapeHtml(props.detalle || '-')}</div>
           <div class="detalle-item-line"><strong>Observaciones:</strong> ${escapeHtml(props.observaciones || '-')}</div>
+          ${jitsiHtml}
           <div class="detalle-item-actions">
             <button class="btn" type="button">Editar</button>
             <button class="btn danger" type="button">Eliminar</button>

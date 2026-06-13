@@ -231,9 +231,10 @@
 
           <div class="form-group">
             <label for="id_especialidad">Especialidad</label>
-            <select id="id_especialidad" required>
+            <select id="id_especialidad" onchange="toggleEspecialidadCustom()">
               <option value="">Seleccione especialidad</option>
             </select>
+            <input type="text" id="especialidad_custom" placeholder="Escribe la especialidad" style="display:none;margin-top:6px;">
           </div>
 
           <div class="form-group">
@@ -286,6 +287,7 @@
   <script>
     let doctores = [];
     let usuariosCatalogo = [];
+    let usuariosYaDoctores = [];
     let doctorEditando = null;
     let doctorEstadoId = null;
     let doctorEstadoAccion = null;
@@ -315,11 +317,21 @@
         const res = await fetch('/api/doctores/catalogos/');
         const data = await res.json();
         usuariosCatalogo = data.usuarios || [];
-        llenarUsuarios(usuariosCatalogo);
+        usuariosYaDoctores = data.usuarios_ya_doctores || [];
         llenarEspecialidades(data.especialidades || []);
+        llenarUsuariosParaNuevo();
       } catch (error) {
         console.error(error);
       }
+    }
+
+    function llenarUsuariosParaNuevo() {
+      const disponibles = usuariosCatalogo.filter(u => !usuariosYaDoctores.includes(u.id_usuario));
+      llenarUsuarios(disponibles);
+    }
+
+    function llenarUsuariosTodos() {
+      llenarUsuarios(usuariosCatalogo);
     }
 
     function llenarUsuarios(items) {
@@ -338,6 +350,19 @@
       items.forEach(e => {
         select.innerHTML += `<option value="${e.id_especialidad}">${e.nombre_especialidad}</option>`;
       });
+      select.innerHTML += `<option value="__otra__">Otra especialidad (especificar)</option>`;
+    }
+
+    function toggleEspecialidadCustom() {
+      const sel = document.getElementById('id_especialidad');
+      const custom = document.getElementById('especialidad_custom');
+      if (sel.value === '__otra__') {
+        custom.style.display = 'block';
+        custom.focus();
+      } else {
+        custom.style.display = 'none';
+        custom.value = '';
+      }
     }
 
     function cargarDatosUsuarioSeleccionado() {
@@ -402,6 +427,9 @@
       document.getElementById('tituloModalDoctor').textContent = 'Nuevo doctor';
       document.getElementById('btnGuardarDoctor').textContent = 'Guardar doctor';
       document.getElementById('mensajeDoctor').textContent = '';
+      document.getElementById('especialidad_custom').style.display = 'none';
+      document.getElementById('especialidad_custom').value = '';
+      llenarUsuariosParaNuevo();
       document.getElementById('modalDoctor').style.display = 'flex';
     }
 
@@ -413,6 +441,10 @@
       document.getElementById('btnGuardarDoctor').textContent = 'Actualizar doctor';
       document.getElementById('mensajeDoctor').textContent = '';
       document.getElementById('grupoEstadoDoctor').style.display = 'flex';
+      document.getElementById('especialidad_custom').style.display = 'none';
+      document.getElementById('especialidad_custom').value = '';
+
+      llenarUsuariosTodos();
 
       document.getElementById('id_usuario').value = d.id_usuario || '';
       document.getElementById('id_especialidad').value = d.id_especialidad || '';
@@ -445,13 +477,27 @@
       const mensaje = document.getElementById('mensajeDoctor');
       mensaje.textContent = doctorEditando ? 'Actualizando...' : 'Guardando...';
 
+      const espSel = document.getElementById('id_especialidad').value;
+      const espCustom = document.getElementById('especialidad_custom').value.trim();
+
+      if (espSel === '__otra__' && !espCustom) {
+        mensaje.textContent = 'Escribe el nombre de la especialidad.';
+        return;
+      }
+
+      if (!espSel) {
+        mensaje.textContent = 'Selecciona una especialidad.';
+        return;
+      }
+
       const payload = {
         id_usuario: document.getElementById('id_usuario').value,
         nombres: document.getElementById('doctor_nombres').value.trim(),
         apellidos: document.getElementById('doctor_apellidos').value.trim(),
         correo: document.getElementById('doctor_correo').value.trim(),
         telefono: document.getElementById('doctor_telefono').value.trim(),
-        id_especialidad: document.getElementById('id_especialidad').value,
+        id_especialidad: espSel !== '__otra__' ? espSel : '',
+        especialidad_custom: espSel === '__otra__' ? espCustom : '',
         numero_colegiado: document.getElementById('numero_colegiado').value.trim(),
         color_agenda: document.getElementById('color_agenda').value,
         activo: document.getElementById('activo_doctor').value

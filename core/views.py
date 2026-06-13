@@ -332,7 +332,8 @@ def citas_json(request):
                 "id_paciente": c.id_paciente.id_paciente if c.id_paciente else '',
                 "id_doctor": c.id_doctor.id_doctor if c.id_doctor else '',
                 "id_estado_cita": c.id_estado_cita.id_estado_cita if c.id_estado_cita else '',
-                "id_motivo_consulta": c.id_motivo_consulta.id_motivo_consulta if c.id_motivo_consulta else ''
+                "id_motivo_consulta": c.id_motivo_consulta.id_motivo_consulta if c.id_motivo_consulta else '',
+                "link_jitsi": f"https://meet.jit.si/ClinicaDS-{c.id_cita}" if (c.modalidad or '').lower() == 'virtual' else ''
             }
         })
 
@@ -399,6 +400,25 @@ def crear_cita_json(request):
         motivo = MotivosConsulta.objects.get(id_motivo_consulta=body['id_motivo_consulta'])
         creado_por = Usuarios.objects.get(id_usuario=request.session.get('usuario_id'))
 
+        try:
+            from zoneinfo import ZoneInfo
+            ahora_gt = datetime.now(ZoneInfo('America/Guatemala')).replace(tzinfo=None)
+        except Exception:
+            ahora_gt = datetime.now()
+
+        fecha_cita_val = date.fromisoformat(body['fecha_cita'])
+        hora_parts = body['hora_inicio'].split(':')
+        hora_inicio_val = time(int(hora_parts[0]), int(hora_parts[1]))
+        dt_cita = datetime.combine(fecha_cita_val, hora_inicio_val)
+
+        if dt_cita < ahora_gt:
+            estados_permitidos = {'cancelada', 'no asistió', 'no asistio'}
+            if estado.nombre_estado.lower() not in estados_permitidos:
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'Las citas en fechas u horas pasadas solo pueden guardarse con estado Cancelada o No asistió.'
+                }, status=400)
+
         nueva_cita = Citas.objects.create(
             id_paciente=paciente,
             id_doctor=doctor,
@@ -413,10 +433,15 @@ def crear_cita_json(request):
             creada_por=creado_por
         )
 
+        link_jitsi = ''
+        if (body.get('modalidad') or '').lower() == 'virtual':
+            link_jitsi = f"https://meet.jit.si/ClinicaDS-{nueva_cita.id_cita}"
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Cita creada correctamente',
-            'id_cita': nueva_cita.id_cita
+            'id_cita': nueva_cita.id_cita,
+            'link_jitsi': link_jitsi
         }, json_dumps_params={'ensure_ascii': False})
 
     except Exception as e:
@@ -433,9 +458,30 @@ def editar_cita_json(request, id_cita):
         body = json.loads(request.body)
 
         cita = Citas.objects.get(id_cita=id_cita)
+        nuevo_estado = EstadosCita.objects.get(id_estado_cita=body['id_estado_cita'])
+
+        try:
+            from zoneinfo import ZoneInfo
+            ahora_gt = datetime.now(ZoneInfo('America/Guatemala')).replace(tzinfo=None)
+        except Exception:
+            ahora_gt = datetime.now()
+
+        fecha_cita_val = date.fromisoformat(body['fecha_cita'])
+        hora_parts = body['hora_inicio'].split(':')
+        hora_inicio_val = time(int(hora_parts[0]), int(hora_parts[1]))
+        dt_cita = datetime.combine(fecha_cita_val, hora_inicio_val)
+
+        if dt_cita < ahora_gt:
+            estados_permitidos = {'cancelada', 'no asistió', 'no asistio'}
+            if nuevo_estado.nombre_estado.lower() not in estados_permitidos:
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'Las citas en fechas u horas pasadas solo pueden tener estado Cancelada o No asistió.'
+                }, status=400)
+
         cita.id_paciente = Pacientes.objects.get(id_paciente=body['id_paciente'])
         cita.id_doctor = Doctores.objects.get(id_doctor=body['id_doctor'])
-        cita.id_estado_cita = EstadosCita.objects.get(id_estado_cita=body['id_estado_cita'])
+        cita.id_estado_cita = nuevo_estado
         cita.id_motivo_consulta = MotivosConsulta.objects.get(id_motivo_consulta=body['id_motivo_consulta'])
         cita.fecha_cita = body['fecha_cita']
         cita.hora_inicio = body['hora_inicio']
@@ -806,15 +852,20 @@ def doctores_catalogos_json(request):
     )
 
     especialidades = list(
-        Especialidades.objects.filter(activo=1).values(
+        Especialidades.objects.filter(activo=1).order_by('nombre_especialidad').values(
             'id_especialidad',
             'nombre_especialidad'
         )
     )
 
+    usuarios_ya_doctores = list(
+        Doctores.objects.filter(activo=1).values_list('id_usuario_id', flat=True)
+    )
+
     return JsonResponse({
         'usuarios': usuarios,
-        'especialidades': especialidades
+        'especialidades': especialidades,
+        'usuarios_ya_doctores': usuarios_ya_doctores
     }, json_dumps_params={'ensure_ascii': False})
 
 
@@ -828,7 +879,15 @@ def crear_doctor_json(request):
         body = json.loads(request.body)
 
         usuario = Usuarios.objects.get(id_usuario=body['id_usuario'])
-        especialidad = Especialidades.objects.get(id_especialidad=body['id_especialidad'])
+
+        especialidad_custom = (body.get('especialidad_custom') or '').strip()
+        if especialidad_custom:
+            especialidad, _ = Especialidades.objects.get_or_create(
+                nombre_especialidad=especialidad_custom,
+                defaults={'activo': 1}
+            )
+        else:
+            especialidad = Especialidades.objects.get(id_especialidad=body['id_especialidad'])
 
         correo = body.get('correo', '').strip()
         if correo and Usuarios.objects.filter(correo=correo).exclude(id_usuario=usuario.id_usuario).exists():
@@ -874,7 +933,15 @@ def actualizar_doctor_json(request, id_doctor):
 
         doctor = Doctores.objects.select_related('id_usuario', 'id_especialidad').get(id_doctor=id_doctor)
         usuario = Usuarios.objects.get(id_usuario=body['id_usuario'])
-        especialidad = Especialidades.objects.get(id_especialidad=body['id_especialidad'])
+
+        especialidad_custom = (body.get('especialidad_custom') or '').strip()
+        if especialidad_custom:
+            especialidad, _ = Especialidades.objects.get_or_create(
+                nombre_especialidad=especialidad_custom,
+                defaults={'activo': 1}
+            )
+        else:
+            especialidad = Especialidades.objects.get(id_especialidad=body['id_especialidad'])
 
         correo = body.get('correo', '').strip()
         if correo and Usuarios.objects.filter(correo=correo).exclude(id_usuario=usuario.id_usuario).exists():
@@ -1938,6 +2005,57 @@ def generar_word_paciente(request, id_paciente):
         )
     else:
         documento.add_paragraph("No hay pagos registrados para este paciente.")
+
+    documento.add_paragraph("")
+
+    # =========================
+    # FACTURA / COMPROBANTE
+    # =========================
+    documento.add_heading("Factura / Comprobante de Pago", level=2)
+
+    cita_factura = citas.filter(
+        id_estado_cita__nombre_estado='Completada'
+    ).order_by('-fecha_cita', '-hora_inicio').first() or citas.order_by('-fecha_cita', '-hora_inicio').first()
+
+    pago_factura = pagos.first()
+
+    tabla_factura = documento.add_table(rows=0, cols=2)
+    tabla_factura.style = "Table Grid"
+
+    def fila_factura(tabla, etiqueta, dato):
+        fila = tabla.add_row().cells
+        fila[0].text = str(etiqueta)
+        fila[1].text = str(dato) if dato not in (None, '') else ''
+
+    fila_factura(tabla_factura, "Paciente", f"{paciente.nombres or ''} {paciente.apellidos or ''}".strip())
+    fila_factura(tabla_factura, "DPI / Pasaporte", paciente.dpi_pasaporte or '')
+    fila_factura(tabla_factura, "Teléfono", paciente.telefono or '')
+    fila_factura(tabla_factura, "Correo", paciente.correo or '')
+
+    if cita_factura:
+        doctor_fact = ''
+        if cita_factura.id_doctor and cita_factura.id_doctor.id_usuario:
+            u = cita_factura.id_doctor.id_usuario
+            doctor_fact = f"{u.nombres or ''} {u.apellidos or ''}".strip()
+        especialidad_fact = ''
+        if cita_factura.id_doctor and cita_factura.id_doctor.id_especialidad:
+            especialidad_fact = cita_factura.id_doctor.id_especialidad.nombre_especialidad or ''
+
+        fila_factura(tabla_factura, "Fecha de consulta", fecha(cita_factura.fecha_cita))
+        fila_factura(tabla_factura, "Horario", f"{hora(cita_factura.hora_inicio)} - {hora(cita_factura.hora_fin)}")
+        fila_factura(tabla_factura, "Doctor", doctor_fact)
+        fila_factura(tabla_factura, "Especialidad", especialidad_fact)
+        fila_factura(tabla_factura, "Modalidad", cita_factura.modalidad or 'Presencial')
+        fila_factura(tabla_factura, "Motivo", cita_factura.id_motivo_consulta.nombre_motivo if cita_factura.id_motivo_consulta else '')
+
+    fila_factura(tabla_factura, "Forma de pago", pago_factura.id_tipo_pago.nombre_tipo_pago if pago_factura and pago_factura.id_tipo_pago else '')
+    fila_factura(tabla_factura, "Monto (Q)", f"{pago_factura.monto}" if pago_factura and pago_factura.monto is not None else '')
+    fila_factura(tabla_factura, "Referencia", pago_factura.referencia_pago if pago_factura else '')
+    fila_factura(tabla_factura, "Observaciones de pago", pago_factura.observaciones if pago_factura else '')
+    fila_factura(tabla_factura, "Firma del paciente", '')
+    fila_factura(tabla_factura, "Sello y firma del médico", '')
+
+    documento.add_paragraph("")
 
     aplicar_fuente(documento)
 

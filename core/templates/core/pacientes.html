@@ -236,7 +236,8 @@
 
         <div class="form-group">
           <label for="dpi_pasaporte">DPI / Pasaporte</label>
-          <input type="text" id="dpi_pasaporte">
+          <input type="text" id="dpi_pasaporte" maxlength="13" placeholder="13 dígitos (CUI Guatemala)" oninput="validarCamposDPI()">
+          <span id="dpi_error" style="color:var(--red);font-size:12px;margin-top:2px;display:none;"></span>
         </div>
 
         <div class="form-group">
@@ -250,8 +251,26 @@
         </div>
 
         <div class="form-group">
-          <label for="ocupacion">Ocupación</label>
-          <input type="text" id="ocupacion">
+          <label for="ocupacion_select">Ocupación</label>
+          <select id="ocupacion_select" onchange="toggleOcupacionCustom()">
+            <option value="">Seleccione</option>
+            <option value="Estudiante">Estudiante</option>
+            <option value="Maestro/a - Docente">Maestro/a - Docente</option>
+            <option value="Médico/a">Médico/a</option>
+            <option value="Enfermero/a">Enfermero/a</option>
+            <option value="Ingeniero/a">Ingeniero/a</option>
+            <option value="Abogado/a">Abogado/a</option>
+            <option value="Contador/a">Contador/a</option>
+            <option value="Agricultor/a">Agricultor/a</option>
+            <option value="Comerciante">Comerciante</option>
+            <option value="Ama de casa">Ama de casa</option>
+            <option value="Empleado/a público">Empleado/a público</option>
+            <option value="Empleado/a privado">Empleado/a privado</option>
+            <option value="Desempleado/a">Desempleado/a</option>
+            <option value="Pensionado/a - Jubilado/a">Pensionado/a - Jubilado/a</option>
+            <option value="__otra__">Otra (especificar)</option>
+          </select>
+          <input type="text" id="ocupacion_custom" placeholder="Escribe tu ocupación" style="display:none;margin-top:6px;">
         </div>
 
         <div class="form-group full">
@@ -419,10 +438,56 @@
       document.getElementById('dpi_pasaporte').value = '';
       document.getElementById('telefono').value = '';
       document.getElementById('correo').value = '';
-      document.getElementById('ocupacion').value = '';
+      document.getElementById('ocupacion_select').value = '';
+      document.getElementById('ocupacion_custom').value = '';
+      document.getElementById('ocupacion_custom').style.display = 'none';
       document.getElementById('direccion').value = '';
       document.getElementById('contacto_emergencia_nombre').value = '';
       document.getElementById('contacto_emergencia_telefono').value = '';
+      const err = document.getElementById('dpi_error');
+      if (err) { err.style.display = 'none'; err.textContent = ''; }
+    }
+
+    function toggleOcupacionCustom() {
+      const sel = document.getElementById('ocupacion_select');
+      const custom = document.getElementById('ocupacion_custom');
+      if (sel.value === '__otra__') {
+        custom.style.display = 'block';
+        custom.focus();
+      } else {
+        custom.style.display = 'none';
+        custom.value = '';
+      }
+    }
+
+    const MAX_MUNICIPIOS_DPI = {
+      1:17,2:8,3:16,4:16,5:13,6:14,7:19,8:8,
+      9:24,10:21,11:9,12:29,13:32,14:21,15:8,16:17,
+      17:12,18:5,19:11,20:11,21:7,22:17
+    };
+
+    function validarDPI(dpi) {
+      const d = dpi.trim().replace(/\s/g, '');
+      if (d === '') return null;
+      if (!/^\d{13}$/.test(d)) return 'El DPI debe tener exactamente 13 dígitos.';
+      const depto = parseInt(d.substring(11, 13), 10);
+      const muni = parseInt(d.substring(9, 11), 10);
+      if (depto < 1 || depto > 22) return `Código de departamento inválido (${String(depto).padStart(2,'0')}). Debe ser entre 01 y 22.`;
+      if (muni < 1 || muni > (MAX_MUNICIPIOS_DPI[depto] || 0)) return `Código de municipio inválido (${String(muni).padStart(2,'0')}) para el departamento ${String(depto).padStart(2,'0')}.`;
+      return null;
+    }
+
+    function validarCamposDPI() {
+      const dpi = document.getElementById('dpi_pasaporte').value;
+      const errEl = document.getElementById('dpi_error');
+      const error = validarDPI(dpi);
+      if (error) {
+        errEl.textContent = error;
+        errEl.style.display = 'block';
+      } else {
+        errEl.textContent = '';
+        errEl.style.display = 'none';
+      }
     }
 
     function abrirSelector(input) {
@@ -434,6 +499,11 @@
     }
 
     function obtenerPayloadPaciente() {
+      const selOcup = document.getElementById('ocupacion_select').value;
+      const ocupacion = selOcup === '__otra__'
+        ? document.getElementById('ocupacion_custom').value.trim()
+        : selOcup;
+
       return {
         nombres: document.getElementById('nombres').value.trim(),
         apellidos: document.getElementById('apellidos').value.trim(),
@@ -443,7 +513,7 @@
         direccion: document.getElementById('direccion').value.trim(),
         telefono: document.getElementById('telefono').value.trim(),
         correo: document.getElementById('correo').value.trim(),
-        ocupacion: document.getElementById('ocupacion').value.trim(),
+        ocupacion: ocupacion,
         contacto_emergencia_nombre: document.getElementById('contacto_emergencia_nombre').value.trim(),
         contacto_emergencia_telefono: document.getElementById('contacto_emergencia_telefono').value.trim()
       };
@@ -454,6 +524,12 @@
 
       if (!payload.nombres || !payload.apellidos || !payload.telefono) {
         document.getElementById('mensajePaciente').textContent = 'Completa nombres, apellidos y teléfono.';
+        return;
+      }
+
+      const errDPI = validarDPI(payload.dpi_pasaporte);
+      if (errDPI) {
+        document.getElementById('mensajePaciente').textContent = errDPI;
         return;
       }
 
@@ -496,9 +572,27 @@
       document.getElementById('direccion').value = paciente.direccion || '';
       document.getElementById('telefono').value = paciente.telefono || '';
       document.getElementById('correo').value = paciente.correo || '';
-      document.getElementById('ocupacion').value = paciente.ocupacion || '';
       document.getElementById('contacto_emergencia_nombre').value = paciente.contacto_emergencia_nombre || '';
       document.getElementById('contacto_emergencia_telefono').value = paciente.contacto_emergencia_telefono || '';
+
+      const ocupVal = paciente.ocupacion || '';
+      const selOcup = document.getElementById('ocupacion_select');
+      const customOcup = document.getElementById('ocupacion_custom');
+      const opcionExiste = Array.from(selOcup.options).some(o => o.value === ocupVal && o.value !== '__otra__' && o.value !== '');
+      if (!ocupVal) {
+        selOcup.value = '';
+        customOcup.style.display = 'none';
+        customOcup.value = '';
+      } else if (opcionExiste) {
+        selOcup.value = ocupVal;
+        customOcup.style.display = 'none';
+        customOcup.value = '';
+      } else {
+        selOcup.value = '__otra__';
+        customOcup.style.display = 'block';
+        customOcup.value = ocupVal;
+      }
+      validarCamposDPI();
 
       document.getElementById('accionesModalPaciente').innerHTML = `
         <button class="btn secondary" onclick="cerrarModalPaciente()">Cancelar</button>
@@ -513,6 +607,12 @@
 
       if (!payload.nombres || !payload.apellidos || !payload.telefono) {
         document.getElementById('mensajePaciente').textContent = 'Completa nombres, apellidos y teléfono.';
+        return;
+      }
+
+      const errDPI = validarDPI(payload.dpi_pasaporte);
+      if (errDPI) {
+        document.getElementById('mensajePaciente').textContent = errDPI;
         return;
       }
 

@@ -196,13 +196,25 @@ def main():
     insert_role("Doctor", "Acceso a módulos clínicos y gestión de sus citas/notas.")
     insert_role("Paciente", "Usuario paciente para acceso limitado o vinculación futura.")
 
-    # Especialidades base para que el formulario de doctores no quede vacío.
+    # Especialidades
     insert_especialidad("Medicina General", "Atención médica general.")
-    insert_especialidad("Psicología Clínica", "Atención psicológica y seguimiento clínico.")
-    insert_especialidad("Psiquiatría", "Atención especializada en salud mental.")
     insert_especialidad("Pediatría", "Atención médica infantil.")
-    insert_especialidad("Ginecología", "Atención médica ginecológica.")
+    insert_especialidad("Ginecología y Obstetricia", "Atención ginecológica y obstétrica.")
+    insert_especialidad("Cardiología", "Diagnóstico y tratamiento de enfermedades cardíacas.")
+    insert_especialidad("Dermatología", "Enfermedades de la piel.")
+    insert_especialidad("Neurología", "Trastornos del sistema nervioso.")
+    insert_especialidad("Ortopedia y Traumatología", "Lesiones y enfermedades del sistema músculo-esquelético.")
+    insert_especialidad("Psicología Clínica", "Atención psicológica y seguimiento clínico.")
+    insert_especialidad("Odontología", "Salud bucal y dental.")
+    insert_especialidad("Oftalmología", "Enfermedades oculares.")
+    insert_especialidad("Otorrinolaringología", "Enfermedades de oído, nariz y garganta.")
+    insert_especialidad("Gastroenterología", "Enfermedades del sistema digestivo.")
+    insert_especialidad("Urología", "Enfermedades del sistema urinario.")
+    insert_especialidad("Endocrinología", "Trastornos hormonales y metabólicos.")
+    insert_especialidad("Psiquiatría", "Atención especializada en salud mental.")
     insert_especialidad("Nutrición", "Evaluación y seguimiento nutricional.")
+    insert_especialidad("Medicina Interna", "Diagnóstico y tratamiento de enfermedades internas.")
+    insert_especialidad("Cirugía General", "Procedimientos quirúrgicos generales.")
 
     # Catálogos útiles para citas y pagos.
     insert_estado_cita("Programada", "#38bdf8")
