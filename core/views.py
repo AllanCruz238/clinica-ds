@@ -2022,76 +2022,85 @@ def _citas_recordatorio_qs():
 
 @rol_requerido(['Administrador', 'Recepción'])
 def enviar_recordatorios_correo(request):
-    enviados = 0
-    errores = 0
-    omitidos = 0
-    detalle_errores = []
-
+    import traceback as _traceback
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT id_recordatorio, destinatario, mensaje
-                FROM recordatorios
-                WHERE canal = %s
-                  AND estado_envio = %s
-                ORDER BY fecha_programada ASC
-                LIMIT 50
-            """, ['correo', 'pendiente'])
-            recordatorios = cursor.fetchall()
-    except Exception as e:
-        return HttpResponse(
-            f"Error consultando recordatorios de correo: {str(e)}",
-            status=200,
-            content_type="text/plain; charset=utf-8"
-        )
-
-    if not recordatorios:
-        return HttpResponse(
-            "No hay recordatorios pendientes por correo.",
-            status=200,
-            content_type="text/plain; charset=utf-8"
-        )
-
-    for id_recordatorio, destinatario, mensaje in recordatorios:
-        if not destinatario:
-            omitidos += 1
-            detalle_errores.append(f"Recordatorio {id_recordatorio}: sin destinatario.")
-            continue
+        enviados = 0
+        errores = 0
+        omitidos = 0
+        detalle_errores = []
 
         try:
-            send_mail(
-                subject="Recordatorio de cita médica",
-                message=mensaje or "Recordatorio de cita médica.",
-                from_email=None,
-                recipient_list=[destinatario],
-                fail_silently=False,
-            )
-
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    UPDATE recordatorios
-                    SET estado_envio = %s
-                    WHERE id_recordatorio = %s
-                """, ['enviado', id_recordatorio])
-
-            enviados += 1
-
+                    SELECT id_recordatorio, destinatario, mensaje
+                    FROM recordatorios
+                    WHERE canal = %s
+                      AND estado_envio = %s
+                    ORDER BY fecha_programada ASC
+                    LIMIT 50
+                """, ['correo', 'pendiente'])
+                recordatorios = cursor.fetchall()
         except Exception as e:
-            errores += 1
-            detalle = f"Recordatorio {id_recordatorio} hacia {destinatario}: {str(e)}"
-            detalle_errores.append(detalle)
-            print("ERROR AL ENVIAR CORREO:", detalle)
+            return HttpResponse(
+                f"Error consultando recordatorios de correo: {str(e)}",
+                status=200,
+                content_type="text/plain; charset=utf-8"
+            )
 
-    respuesta = f"Recordatorios procesados. Enviados: {enviados}. Omitidos: {omitidos}. Errores: {errores}."
+        if not recordatorios:
+            return HttpResponse(
+                "No hay recordatorios pendientes por correo.",
+                status=200,
+                content_type="text/plain; charset=utf-8"
+            )
 
-    if detalle_errores:
-        respuesta += "\n\nDetalle:\n" + "\n".join(detalle_errores[:10])
+        for id_recordatorio, destinatario, mensaje in recordatorios:
+            if not destinatario:
+                omitidos += 1
+                detalle_errores.append(f"Recordatorio {id_recordatorio}: sin destinatario.")
+                continue
 
-    return HttpResponse(
-        respuesta,
-        status=200,
-        content_type="text/plain; charset=utf-8"
-    )
+            try:
+                send_mail(
+                    subject="Recordatorio de cita médica",
+                    message=mensaje or "Recordatorio de cita médica.",
+                    from_email=None,
+                    recipient_list=[destinatario],
+                    fail_silently=False,
+                )
+
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE recordatorios
+                        SET estado_envio = %s
+                        WHERE id_recordatorio = %s
+                    """, ['enviado', id_recordatorio])
+
+                enviados += 1
+
+            except Exception as e:
+                errores += 1
+                detalle = f"Recordatorio {id_recordatorio} hacia {destinatario}: {str(e)}"
+                detalle_errores.append(detalle)
+                print("ERROR AL ENVIAR CORREO:", detalle)
+
+        respuesta = f"Recordatorios procesados. Enviados: {enviados}. Omitidos: {omitidos}. Errores: {errores}."
+
+        if detalle_errores:
+            respuesta += "\n\nDetalle:\n" + "\n".join(detalle_errores[:10])
+
+        return HttpResponse(
+            respuesta,
+            status=200,
+            content_type="text/plain; charset=utf-8"
+        )
+
+    except Exception as e:
+        return HttpResponse(
+            f"Error inesperado al enviar correos: {str(e)}\n\n{_traceback.format_exc()}",
+            status=200,
+            content_type="text/plain; charset=utf-8"
+        )
 
 
 def limpiar_numero_whatsapp(numero):
