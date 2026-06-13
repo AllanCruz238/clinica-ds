@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'anymail',
     'core',
 ]
 
@@ -131,11 +132,8 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST') or 'smtp.gmail.com'
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT') or 587)
-EMAIL_USE_TLS = (os.environ.get('EMAIL_USE_TLS') or 'True') == 'True'
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER') or 'allanjcruzp04@gmail.com'
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD') or 'duks idhu xkry wufe'
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL') or 'allanjcruzp04@gmail.com'
-EMAIL_TIMEOUT = 10
+EMAIL_BACKEND = 'anymail.backends.resend.EmailBackend'
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL') or 'onboarding@resend.dev'
+ANYMAIL = {
+    'RESEND_API_KEY': os.environ.get('RESEND_API_KEY') or 're_iafxYUkE_BfBXttA1eppKi86i5vWBWLmC',
+}
