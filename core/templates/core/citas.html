@@ -411,6 +411,25 @@
     </div>
   </div>
 
+  <!-- Modal enlace Jitsi -->
+  <div class="modal-backdrop" id="jitsiModalBackdrop" style="z-index:10001;">
+    <div class="modal modal-small" style="text-align:center;">
+      <div class="modal-header">
+        <h3 style="color:var(--green);">✓ Cita virtual creada</h3>
+        <button class="close-btn" onclick="cerrarModalJitsi()">×</button>
+      </div>
+      <p style="color:var(--t2);margin-bottom:16px;font-size:13.5px;">Comparte este enlace con el paciente para la videollamada:</p>
+      <div style="background:var(--s2);border:1px solid var(--bmd);border-radius:12px;padding:14px 16px;margin-bottom:16px;word-break:break-all;text-align:left;">
+        <a id="jitsiModalLink" href="#" target="_blank" style="color:var(--accent);font-size:13px;font-weight:600;text-decoration:none;"></a>
+      </div>
+      <div class="modal-actions" style="justify-content:center;gap:10px;">
+        <button class="btn secondary" onclick="copiarEnlaceJitsi()">Copiar enlace</button>
+        <a id="jitsiModalAbrir" href="#" target="_blank" class="btn">Abrir reunión</a>
+      </div>
+      <div id="jitsiCopiadoMsg" style="color:var(--green);font-size:12px;margin-top:10px;display:none;">¡Enlace copiado!</div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="confirmarEliminarBackdrop">
     <div class="modal modal-small">
       <div class="modal-header">
@@ -781,6 +800,35 @@
       limpiarFormulario();
     }
 
+    function abrirModalJitsi(link) {
+      document.getElementById('jitsiModalLink').href = link;
+      document.getElementById('jitsiModalLink').textContent = link;
+      document.getElementById('jitsiModalAbrir').href = link;
+      document.getElementById('jitsiCopiadoMsg').style.display = 'none';
+      document.getElementById('jitsiModalBackdrop').style.display = 'flex';
+    }
+
+    function cerrarModalJitsi() {
+      document.getElementById('jitsiModalBackdrop').style.display = 'none';
+    }
+
+    async function copiarEnlaceJitsi() {
+      const link = document.getElementById('jitsiModalLink').textContent;
+      try {
+        await navigator.clipboard.writeText(link);
+      } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = link;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      const msg = document.getElementById('jitsiCopiadoMsg');
+      msg.style.display = 'block';
+      setTimeout(() => { msg.style.display = 'none'; }, 2000);
+    }
+
     function limpiarFormulario() {
       document.getElementById('id_cita_editando').value = '';
       document.getElementById('tituloModalCita').textContent = 'Nueva cita';
@@ -861,29 +909,22 @@
       const data = await res.json();
 
       if (data.ok) {
-        let msg = idCitaEditando ? 'Cita actualizada correctamente.' : 'Cita guardada correctamente.';
-        if (data.link_jitsi) {
-          msg += ` Enlace reunión: ${data.link_jitsi}`;
-          const jitsiGroup = document.getElementById('jitsiLinkGroup');
-          const jitsiLink = document.getElementById('jitsiLinkDisplay');
-          jitsiGroup.style.display = 'block';
-          jitsiLink.href = data.link_jitsi;
-          jitsiLink.textContent = data.link_jitsi;
-        }
-        document.getElementById('mensajeModal').textContent = msg;
+        document.getElementById('mensajeModal').textContent = idCitaEditando ? 'Cita actualizada correctamente.' : 'Cita guardada correctamente.';
         await calendar.refetchEvents();
 
         if (fechaDiaSeleccionado && document.getElementById('diaModalBackdrop').style.display === 'flex') {
           renderizarCitasDelDia(fechaDiaSeleccionado);
         }
-
         if (fechaDetalleSeleccionada) {
           actualizarPanelDetalles(fechaDetalleSeleccionada);
         }
 
-        setTimeout(() => {
+        if (data.link_jitsi && !idCitaEditando) {
           cerrarModal();
-        }, data.link_jitsi ? 2000 : 700);
+          abrirModalJitsi(data.link_jitsi);
+        } else {
+          setTimeout(() => cerrarModal(), 700);
+        }
       } else {
         document.getElementById('mensajeModal').textContent = data.error || 'Ocurrió un error.';
       }

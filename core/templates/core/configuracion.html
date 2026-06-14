@@ -7,8 +7,6 @@
   <script>
     (function(){
       if(localStorage.getItem('clinica_theme')==='light') document.documentElement.classList.add('light-mode');
-      var fs=localStorage.getItem('clinica_fontsize');
-      if(fs) document.documentElement.style.fontSize=fs+'px';
     })();
   </script>
   <style>
@@ -105,9 +103,6 @@
     .toggle-track::after { content: ''; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; background: var(--t2); border-radius: 50%; transition: transform .2s, background .2s; }
     .toggle-switch input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
     .toggle-switch input:checked + .toggle-track::after { transform: translateX(20px); background: #040d1a; }
-    .font-size-btns { display: flex; gap: 6px; }
-    .font-size-btns button { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--bmd); background: var(--s2); color: var(--t2); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s; font-family: inherit; }
-    .font-size-btns button.active, .font-size-btns button:hover { background: var(--glow); color: var(--accent); border-color: var(--accent); }
 
     /* ── LAYOUT GRID ── */
     .grid-main { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; margin-bottom: 20px; }
@@ -242,18 +237,6 @@
 
           <div class="toggle-row">
             <div>
-              <div class="toggle-label">Tamaño de fuente</div>
-              <div class="toggle-desc">Ajusta el tamaño del texto en toda la app</div>
-            </div>
-            <div class="font-size-btns">
-              <button onclick="setFontSize(13,'small')" id="fsSmall">S</button>
-              <button onclick="setFontSize(14,'medium')" id="fsMedium">M</button>
-              <button onclick="setFontSize(16,'large')" id="fsLarge">L</button>
-            </div>
-          </div>
-
-          <div class="toggle-row">
-            <div>
               <div class="toggle-label">Animaciones reducidas</div>
               <div class="toggle-desc">Reduce transiciones y efectos visuales</div>
             </div>
@@ -314,15 +297,6 @@
       }
     }
 
-    /* ── Fuente ── */
-    function setFontSize(px, key) {
-      document.documentElement.style.fontSize = px + 'px';
-      localStorage.setItem('clinica_fontsize', px);
-      localStorage.setItem('clinica_fontsize_key', key);
-      ['small','medium','large'].forEach(k => document.getElementById('fs'+k.charAt(0).toUpperCase()+k.slice(1)).classList.remove('active'));
-      document.getElementById('fs'+key.charAt(0).toUpperCase()+key.slice(1)).classList.add('active');
-    }
-
     /* ── Reduced motion ── */
     function aplicarReducedMotion() {
       const on = document.getElementById('toggleReducedMotion').checked;
@@ -338,24 +312,16 @@
     /* ── Restablecer ── */
     function limpiarPreferencias() {
       localStorage.removeItem('clinica_theme');
-      localStorage.removeItem('clinica_fontsize');
-      localStorage.removeItem('clinica_fontsize_key');
       localStorage.removeItem('clinica_reduced_motion');
       document.documentElement.classList.remove('light-mode');
-      document.documentElement.style.fontSize = '';
       document.getElementById('toggleModoClaro').checked = false;
       document.getElementById('toggleReducedMotion').checked = false;
-      ['small','medium','large'].forEach(k => document.getElementById('fs'+k.charAt(0).toUpperCase()+k.slice(1)).classList.remove('active'));
-      document.getElementById('fsMedium').classList.add('active');
     }
 
     /* ── Inicializar controles ── */
     function initApariencia() {
       document.getElementById('toggleModoClaro').checked = localStorage.getItem('clinica_theme') === 'light';
       document.getElementById('toggleReducedMotion').checked = localStorage.getItem('clinica_reduced_motion') === '1';
-      const fsKey = localStorage.getItem('clinica_fontsize_key') || 'medium';
-      ['small','medium','large'].forEach(k => document.getElementById('fs'+k.charAt(0).toUpperCase()+k.slice(1)).classList.remove('active'));
-      document.getElementById('fs'+fsKey.charAt(0).toUpperCase()+fsKey.slice(1)).classList.add('active');
     }
 
     /* ── Configuración de clínica ── */

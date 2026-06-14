@@ -2113,13 +2113,17 @@ def _nombre_paciente_cita(cita):
 def _mensaje_cita_recordatorio(cita):
     hora_inicio = _hora_como_time(cita.hora_inicio)
     nombre = _nombre_paciente_cita(cita)
-    modalidad = cita.modalidad or 'No registrada'
+    modalidad = cita.modalidad or 'Presencial'
     motivo = cita.razon_consulta_detalle or 'Consulta médica'
-    return (
+    mensaje = (
         f"Hola {nombre}, le recordamos su cita médica programada para el "
         f"{cita.fecha_cita} a las {hora_inicio.strftime('%H:%M')}. "
         f"Modalidad: {modalidad}. Motivo: {motivo}. Clínica Nubnest."
     )
+    if modalidad.lower() == 'virtual':
+        link = f"https://meet.jit.si/ClinicaDS-{cita.id_cita}"
+        mensaje += f" Enlace de su cita virtual: {link}"
+    return mensaje
 
 
 def _citas_recordatorio_qs():
