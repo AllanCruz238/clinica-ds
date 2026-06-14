@@ -2134,6 +2134,22 @@ def _mensaje_cita_recordatorio(cita):
     return mensaje
 
 
+def _mensaje_cita_recordatorio_doctor(cita):
+    hora_inicio = _hora_como_time(cita.hora_inicio)
+    nombre_paciente = _nombre_paciente_cita(cita)
+    modalidad = cita.modalidad or 'Presencial'
+    motivo = cita.razon_consulta_detalle or 'Consulta médica'
+    mensaje = (
+        f"Recordatorio de cita: paciente {nombre_paciente} el {cita.fecha_cita} "
+        f"a las {hora_inicio.strftime('%H:%M')}. "
+        f"Modalidad: {modalidad}. Motivo: {motivo}. Clínica Nubnest."
+    )
+    if modalidad.lower() == 'virtual':
+        link = f"https://meet.jit.si/ClinicaDS-{cita.id_cita}"
+        mensaje += f" Enlace de la cita virtual: {link}"
+    return mensaje
+
+
 def _citas_recordatorio_qs():
     hoy, manana = _rango_recordatorios_dashboard()
     return Citas.objects.select_related(
@@ -2439,7 +2455,25 @@ def generar_recordatorios_automaticos(request):
                     ('whatsapp', 'manual_dashboard', cita.id_paciente.telefono),
                 ]
 
-                for canal, tipo, destinatario in canales:
+                # Agregar recordatorio al doctor si tiene datos de contacto
+                if cita.id_doctor and cita.id_doctor.id_usuario:
+                    msg_doctor = _mensaje_cita_recordatorio_doctor(cita)
+                    correo_doctor = cita.id_doctor.id_usuario.correo
+                    tel_doctor = cita.id_doctor.id_usuario.telefono
+                    if correo_doctor:
+                        canales.append(('correo', 'manual_dashboard_doctor', correo_doctor))
+                    if tel_doctor:
+                        canales.append(('whatsapp', 'manual_dashboard_doctor', tel_doctor))
+                    # Reemplazar mensaje en canales del doctor
+                    canales_doctor_indices = [i for i, c in enumerate(canales) if c[1] == 'manual_dashboard_doctor']
+                    for idx in canales_doctor_indices:
+                        canal, tipo, dest = canales[idx]
+                        canales[idx] = (canal, tipo, dest, msg_doctor)
+
+                # Normalizar canales a tuplas de 4 elementos
+                canales = [c if len(c) == 4 else (c[0], c[1], c[2], mensaje) for c in canales]
+
+                for canal, tipo, destinatario, msg in canales:
                     if not destinatario:
                         omitidos += 1
                         continue
@@ -2476,7 +2510,7 @@ def generar_recordatorios_automaticos(request):
                             canal,
                             tipo,
                             destinatario,
-                            mensaje,
+                            msg,
                             fecha_programada,
                             'pendiente'
                         ])
