@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard | Clínica DS</title>
+  <script>(function(){if(localStorage.getItem('clinica_theme')==='light')document.documentElement.classList.add('light-mode');var fs=localStorage.getItem('clinica_fontsize');if(fs)document.documentElement.style.fontSize=fs+'px';})();</script>
   <style>
     :root {
       --bg:#060d1b; --surface:#0a1628; --s2:#0f1e36; --s3:#152640;
@@ -14,10 +15,24 @@
       --red:#fb7185; --rbg:rgba(251,113,133,.1);
       --amber:#fbbf24; --abg:rgba(251,191,36,.12); --r:12px; --rl:18px;
     }
+    html.light-mode {
+      --bg:#f0f4f8; --surface:#ffffff; --s2:#f8fafc; --s3:#e2e8f0;
+      --border:rgba(0,0,0,.07); --bmd:rgba(2,132,199,.2); --bhi:rgba(2,132,199,.4);
+      --accent:#0284c7; --a2:#0369a1; --glow:rgba(2,132,199,.08);
+      --text:#0f172a; --t2:#475569;
+      --green:#16a34a; --gbg:rgba(22,163,74,.1);
+      --red:#dc2626; --rbg:rgba(220,38,38,.1);
+      --amber:#d97706; --abg:rgba(217,119,6,.1);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
     .layout { display: flex; min-height: 100vh; }
-    .sidebar { width: 250px; flex-shrink: 0; background: linear-gradient(180deg,#0a1628 0%,#060d1b 100%); border-right: 1px solid var(--bmd); padding: 24px 14px; display: flex; flex-direction: column; }
+    .sidebar { width: 250px; flex-shrink: 0; background: linear-gradient(180deg,#0a1628 0%,#060d1b 100%); border-right: 1px solid var(--bmd); padding: 24px 14px; display: flex; flex-direction: column; transition: transform .28s ease; }
+    html.light-mode .sidebar { background: linear-gradient(180deg,#1e3a5f 0%,#0f2744 100%); }
+    .sidebar a { color: rgba(221,238,255,.7); }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 499; }
+    .hamburger { display: none; flex-direction: column; gap: 5px; background: var(--s2); border: 1px solid var(--bmd); border-radius: 10px; padding: 9px 11px; cursor: pointer; }
+    .hamburger span { display: block; width: 18px; height: 2px; background: var(--text); border-radius: 2px; }
     .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; padding: 0 6px; }
     .brand-mark { width: 34px; height: 34px; flex-shrink: 0; background: linear-gradient(135deg,var(--accent),var(--a2)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #040d1a; font-weight: 800; line-height: 1; }
     .brand-name { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
@@ -85,15 +100,25 @@
     .wa-link { display: inline-block; text-decoration: none; border-radius: 12px; padding: 10px 14px; font-weight: 800; background: linear-gradient(135deg,#34d399,#2dd4bf); color: #04111f; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 16px; }
     @media (max-width: 1200px) { .cards { grid-template-columns: repeat(2,1fr); } .grid-2, .grid-3 { grid-template-columns: 1fr; } }
-    @media (max-width: 900px) { .layout { flex-direction: column; } .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--bmd); } .cards { grid-template-columns: 1fr; } .main { padding: 18px; } }
+    @media (max-width: 768px) {
+      .sidebar { position: fixed; top: 0; left: 0; height: 100vh; z-index: 500; transform: translateX(-100%); width: 260px !important; }
+      .sidebar.open { transform: translateX(0); box-shadow: 4px 0 30px rgba(0,0,0,.4); }
+      .sidebar-overlay.open { display: block; }
+      .hamburger { display: flex; }
+      .cards { grid-template-columns: 1fr; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .main { padding: 16px; }
+      .topbar { margin-bottom: 18px; }
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="brand">
         <div class="brand-mark">✚</div>
         <span class="brand-name">Clínica DS</span>
@@ -111,7 +136,10 @@
 
     <main class="main">
       <div class="topbar">
-        <h2>Dashboard principal</h2>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="hamburger" onclick="toggleSidebar()" aria-label="Menú"><span></span><span></span><span></span></button>
+          <h2>Dashboard principal</h2>
+        </div>
       </div>
 
       <section class="cards">
@@ -452,6 +480,16 @@
       if (brandName && cfg.nombre_clinica && cfg.nombre_clinica.trim()) brandName.textContent = cfg.nombre_clinica.trim();
     } catch (e) {}
   })();
+</script>
+<script>
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebarOverlay').classList.toggle('open');
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.remove('open');
+  }
 </script>
 </body>
 </html>

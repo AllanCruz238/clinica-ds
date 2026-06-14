@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>(function(){if(localStorage.getItem('clinica_theme')==='light')document.documentElement.classList.add('light-mode');var fs=localStorage.getItem('clinica_fontsize');if(fs)document.documentElement.style.fontSize=fs+'px';})();</script>
   <title>Calendario de Citas | Clínica DS</title>
 
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
@@ -18,12 +19,26 @@
       --red:#fb7185; --rbg:rgba(251,113,133,.1);
       --amber:#fbbf24; --r:12px; --rl:18px;
     }
+    html.light-mode {
+      --bg:#f0f4f8; --surface:#ffffff; --s2:#f8fafc; --s3:#e2e8f0;
+      --border:rgba(0,0,0,.07); --bmd:rgba(2,132,199,.2); --bhi:rgba(2,132,199,.4);
+      --accent:#0284c7; --a2:#0369a1; --glow:rgba(2,132,199,.08);
+      --text:#0f172a; --t2:#475569;
+      --green:#16a34a; --gbg:rgba(22,163,74,.1);
+      --red:#dc2626; --rbg:rgba(220,38,38,.1);
+      --amber:#d97706; --abg:rgba(217,119,6,.1);
+    }
+    html.light-mode .sidebar { background: linear-gradient(180deg,#1e3a5f 0%,#0f2744 100%); }
+    html.light-mode input[type="date"], html.light-mode select, html.light-mode textarea { color-scheme: light; }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 499; }
+    .hamburger { display: none; flex-direction: column; gap: 5px; background: var(--s2); border: 1px solid var(--bmd); border-radius: 10px; padding: 9px 11px; cursor: pointer; }
+    .hamburger span { display: block; width: 18px; height: 2px; background: var(--text); border-radius: 2px; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
     .layout { display: flex; min-height: 100vh; }
 
     /* ── SIDEBAR ── */
-    .sidebar { width: 250px; flex-shrink: 0; background: linear-gradient(180deg,#0a1628 0%,#060d1b 100%); border-right: 1px solid var(--bmd); padding: 24px 14px; display: flex; flex-direction: column; }
+    .sidebar { width: 250px; flex-shrink: 0; background: linear-gradient(180deg,#0a1628 0%,#060d1b 100%); border-right: 1px solid var(--bmd); padding: 24px 14px; display: flex; flex-direction: column; transition: transform .28s ease; }
     .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; padding: 0 6px; }
     .brand-mark { width: 34px; height: 34px; flex-shrink: 0; background: linear-gradient(135deg,var(--accent),var(--a2)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #040d1a; font-weight: 800; line-height: 1; }
     .brand-name { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
@@ -210,6 +225,17 @@
     #confirmarEliminarBackdrop { z-index: 10002; }
     #horaModalBackdrop { z-index: 10003; }
 
+      @media (max-width: 768px) {
+      .sidebar { position: fixed; top: 0; left: 0; height: 100vh; z-index: 500; transform: translateX(-100%); width: 260px !important; flex-direction: column; }
+      .sidebar.open { transform: translateX(0); box-shadow: 4px 0 30px rgba(0,0,0,.4); }
+      .sidebar-overlay.open { display: block; }
+      .hamburger { display: flex; }
+      .main { padding: 16px; }
+      .topbar { flex-wrap: wrap; margin-bottom: 16px; }
+      .cards { grid-template-columns: 1fr !important; }
+      .form-grid { grid-template-columns: 1fr !important; }
+      table { min-width: 500px; }
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -217,7 +243,7 @@
 </head>
 <body>
   <div class="layout">
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
       <div class="brand">
         <div class="brand-mark">✚</div>
         <span class="brand-name">Clínica DS</span>
@@ -235,7 +261,9 @@
 
     <main class="main">
       <div class="topbar">
-        <h2>Calendario de citas</h2>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="hamburger" onclick="toggleSidebar()" aria-label="Menú"><span></span><span></span><span></span></button>
+          <h2>Calendario de citas</h2>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn" onclick="abrirModal()">Nueva cita</button>
         </div>
@@ -1174,5 +1202,16 @@
       } catch (e) { /* silencioso — muestra ✚ por defecto */ }
     })();
   </script>
+
+<script>
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebarOverlay').classList.toggle('open');
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.remove('open');
+  }
+</script>
 </body>
 </html>

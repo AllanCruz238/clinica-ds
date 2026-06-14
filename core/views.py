@@ -2656,12 +2656,14 @@ def api_dashboard_recordatorios(request):
                 cursor.execute("""
                     SELECT COUNT(*) FROM recordatorios
                     WHERE canal = %s AND estado_envio = %s
+                    AND fecha_programada >= CURRENT_DATE
                 """, ['correo', 'pendiente'])
                 data["correos_pendientes"] = int(cursor.fetchone()[0] or 0)
 
                 cursor.execute("""
                     SELECT COUNT(*) FROM recordatorios
                     WHERE canal = %s AND estado_envio = %s
+                    AND fecha_programada >= CURRENT_DATE
                 """, ['whatsapp', 'pendiente'])
                 data["whatsapp_pendientes"] = int(cursor.fetchone()[0] or 0)
 
@@ -2669,6 +2671,7 @@ def api_dashboard_recordatorios(request):
                     SELECT id_recordatorio, canal, tipo_recordatorio, destinatario, mensaje, fecha_programada, estado_envio
                     FROM recordatorios
                     WHERE estado_envio = %s
+                    AND fecha_programada >= CURRENT_DATE
                     ORDER BY fecha_programada ASC
                     LIMIT 8
                 """, ['pendiente'])

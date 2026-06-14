@@ -4,9 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Configuración | Clínica DS</title>
-
+  <script>
+    (function(){
+      if(localStorage.getItem('clinica_theme')==='light') document.documentElement.classList.add('light-mode');
+      var fs=localStorage.getItem('clinica_fontsize');
+      if(fs) document.documentElement.style.fontSize=fs+'px';
+    })();
+  </script>
   <style>
-
     :root {
       --bg:#060d1b; --surface:#0a1628; --s2:#0f1e36; --s3:#152640;
       --border:rgba(45,212,191,.08); --bmd:rgba(45,212,191,.15); --bhi:rgba(45,212,191,.3);
@@ -15,19 +20,29 @@
       --green:#34d399; --gbg:rgba(52,211,153,.1);
       --red:#fb7185; --rbg:rgba(251,113,133,.1);
       --amber:#fbbf24; --r:12px; --rl:18px;
+      --sidebar-w:250px;
+    }
+    html.light-mode {
+      --bg:#f0f4f8; --surface:#ffffff; --s2:#f8fafc; --s3:#e2e8f0;
+      --border:rgba(0,0,0,.07); --bmd:rgba(2,132,199,.2); --bhi:rgba(2,132,199,.4);
+      --accent:#0284c7; --a2:#0369a1; --glow:rgba(2,132,199,.08);
+      --text:#0f172a; --t2:#475569;
+      --green:#16a34a; --gbg:rgba(22,163,74,.1);
+      --red:#dc2626; --rbg:rgba(220,38,38,.1);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
     .layout { display: flex; min-height: 100vh; }
 
     /* ── SIDEBAR ── */
-    .sidebar { width: 250px; flex-shrink: 0; background: linear-gradient(180deg,#0a1628 0%,#060d1b 100%); border-right: 1px solid var(--bmd); padding: 24px 14px; display: flex; flex-direction: column; }
+    .sidebar { width: var(--sidebar-w); flex-shrink: 0; background: linear-gradient(180deg,#0a1628 0%,#060d1b 100%); border-right: 1px solid var(--bmd); padding: 24px 14px; display: flex; flex-direction: column; transition: transform .28s ease; }
+    html.light-mode .sidebar { background: linear-gradient(180deg,#1e3a5f 0%,#0f2744 100%); }
     .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; padding: 0 6px; }
     .brand-mark { width: 34px; height: 34px; flex-shrink: 0; background: linear-gradient(135deg,var(--accent),var(--a2)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #040d1a; font-weight: 800; line-height: 1; }
-    .brand-name { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
+    .brand-name { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: #ddeeff; letter-spacing: -.2px; }
     .sidebar h1 { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--accent); margin-bottom: 28px; }
-    .sidebar a { display: block; text-decoration: none; color: var(--t2); padding: 9px 12px; border-radius: var(--r); margin-bottom: 3px; font-size: 13.5px; font-weight: 500; border-left: 3px solid transparent; transition: all .18s ease; }
-    .sidebar a:hover { background: var(--s3); color: var(--text); border-left-color: var(--bhi); }
+    .sidebar a { display: block; text-decoration: none; color: rgba(221,238,255,.6); padding: 9px 12px; border-radius: var(--r); margin-bottom: 3px; font-size: 13.5px; font-weight: 500; border-left: 3px solid transparent; transition: all .18s ease; }
+    .sidebar a:hover { background: rgba(255,255,255,.07); color: #ddeeff; border-left-color: var(--bhi); }
     .sidebar a.active { background: var(--glow); color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
     .sidebar a[href="/logout/"] { color: var(--red) !important; }
     .sidebar a[href="/logout/"]:hover { background: var(--rbg) !important; border-left-color: var(--red) !important; }
@@ -36,55 +51,22 @@
     .main { flex: 1; padding: 28px; min-width: 0; }
     .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; gap: 16px; flex-wrap: wrap; }
     .topbar h2 { font-size: 24px; font-weight: 700; letter-spacing: -.5px; }
-    .top-actions, .actions, .search-box, .recordatorios-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* ── HAMBURGER ── */
+    .hamburger { display: none; flex-direction: column; gap: 5px; background: var(--s2); border: 1px solid var(--bmd); border-radius: 10px; padding: 9px 11px; cursor: pointer; }
+    .hamburger span { display: block; width: 18px; height: 2px; background: var(--text); border-radius: 2px; transition: all .2s; }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 499; }
 
     /* ── BUTTONS ── */
     .btn { padding: 9px 18px; border: none; border-radius: var(--r); cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13.5px; font-weight: 600; background: linear-gradient(135deg,var(--accent),#0891b2); color: #040d1a; transition: all .18s; box-shadow: 0 2px 12px rgba(45,212,191,.2); text-decoration: none; display: inline-block; }
     .btn:hover { filter: brightness(1.1); box-shadow: 0 4px 20px rgba(45,212,191,.3); transform: translateY(-1px); }
     .btn.secondary { background: var(--s2); color: var(--text); border: 1px solid var(--bmd); box-shadow: none; }
     .btn.secondary:hover { background: var(--s3); border-color: var(--bhi); filter: none; transform: translateY(-1px); box-shadow: none; }
-    .btn.danger { background: var(--red); color: #fff; box-shadow: 0 2px 10px rgba(251,113,133,.2); }
-    .btn.danger:hover { filter: brightness(1.1); box-shadow: 0 4px 16px rgba(251,113,133,.3); }
-    .btn.success { background: var(--green); color: #040d1a; box-shadow: 0 2px 10px rgba(52,211,153,.2); }
-    .btn.success:hover { filter: brightness(1.1); }
-    .btn.green { background: var(--green); color: #040d1a; box-shadow: 0 2px 10px rgba(52,211,153,.2); }
-    .btn.green:hover { filter: brightness(1.1); }
-    .btn.orange { background: var(--amber); color: #1a1000; box-shadow: 0 2px 10px rgba(251,191,36,.2); }
-    .btn.orange:hover { filter: brightness(1.1); }
-    .btn.gray { background: var(--s3); color: var(--text); border: 1px solid var(--bmd); box-shadow: none; }
-    .btn.word { background: linear-gradient(135deg,#3b82f6,#1d4ed8); color: #fff; box-shadow: 0 2px 10px rgba(59,130,246,.2); }
 
     /* ── CARDS ── */
-    .cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 28px; }
     .card { background: linear-gradient(145deg,var(--s2),var(--surface)); border: 1px solid var(--bmd); border-radius: var(--rl); padding: 20px; position: relative; overflow: hidden; }
     .card::after { content: ''; position: absolute; top: -16px; right: -16px; width: 64px; height: 64px; background: var(--glow); border-radius: 50%; }
     .card h3 { font-size: 10.5px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; color: var(--t2); margin-bottom: 10px; }
-    .card p { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -1px; }
-
-    /* ── TABLE ── */
-    .table-container { background: var(--surface); border: 1px solid var(--bmd); border-radius: var(--rl); overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; }
-    thead { background: var(--s2); }
-    th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13.5px; }
-    th { color: var(--accent); font-size: 10.5px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; }
-    td { color: var(--text); }
-    tbody tr { transition: background .12s; }
-    tbody tr:hover { background: rgba(45,212,191,.03); }
-    tbody tr:last-child td { border-bottom: none; }
-
-    /* ── BADGES ── */
-    .estado-activo { color: var(--green); font-weight: 600; font-size: 11.5px; background: var(--gbg); padding: 3px 9px; border-radius: 20px; display: inline-block; }
-    .estado-inactivo { color: var(--red); font-weight: 600; font-size: 11.5px; background: var(--rbg); padding: 3px 9px; border-radius: 20px; display: inline-block; }
-    .monto { color: var(--green); font-weight: 700; }
-    .empty { color: var(--t2); font-size: 13px; padding: 10px 0; }
-
-    /* ── MODAL ── */
-    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.75); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 9999; }
-    .modal { width: 100%; max-width: 640px; background: var(--surface); border: 1px solid var(--bmd); border-radius: var(--rl); padding: 28px; box-shadow: 0 20px 60px rgba(0,0,0,.6); max-height: 90vh; overflow-y: auto; }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-    .modal-header h3 { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -.3px; }
-    .close-btn { background: var(--s2); color: var(--t2); border: 1px solid var(--bmd); width: 30px; height: 30px; border-radius: 8px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; transition: all .15s; }
-    .close-btn:hover { background: var(--rbg); color: var(--red); border-color: var(--red); }
 
     /* ── FORMS ── */
     .form-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 14px; }
@@ -93,56 +75,58 @@
     .form-group label { color: var(--t2); font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
     .form-group input, .form-group select, .form-group textarea { padding: 10px 13px; border-radius: var(--r); border: 1px solid var(--bmd); background: var(--s2); color: var(--text); outline: none; width: 100%; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; transition: border-color .15s, box-shadow .15s; }
     .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow); }
-    .form-group input[readonly] { opacity: .55; cursor: not-allowed; }
     .form-group textarea { resize: vertical; min-height: 90px; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+    .actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
     .mensaje { margin-top: 10px; font-size: 13px; color: var(--a2); }
-
-    /* ── SEARCH ── */
-    .search-box input, .search { padding: 10px 14px; border-radius: var(--r); border: 1px solid var(--bmd); background: var(--s2); color: var(--text); outline: none; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; transition: border-color .15s, box-shadow .15s; }
-    .search-box input:focus, .search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow); }
-    .search-box input { min-width: 260px; }
-    .search { width: 100%; margin-bottom: 14px; }
-
-    /* ── MISC INPUTS ── */
     input[type="color"] { height: 42px; padding: 4px; cursor: pointer; background: var(--s2); border: 1px solid var(--bmd); border-radius: var(--r); }
     input[type="date"], input[type="time"], select, textarea { color-scheme: dark; }
-    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.6) sepia(1) saturate(3) hue-rotate(150deg); cursor: pointer; }
+    html.light-mode input[type="date"], html.light-mode input[type="time"], html.light-mode select, html.light-mode textarea { color-scheme: light; }
 
     /* ── PANEL ── */
     .panel { background: var(--surface); border: 1px solid var(--bmd); border-radius: var(--rl); padding: 22px; }
     .panel h3 { color: var(--a2); font-size: 14px; font-weight: 700; margin-bottom: 16px; letter-spacing: -.2px; }
 
-    /* ── DASHBOARD SPECIFICS ── */
-    .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-    .badge.correo { background: rgba(59,130,246,.2); color: #93c5fd; }
-    .badge.whatsapp { background: rgba(52,211,153,.15); color: var(--green); }
-    .tabla-wrap { overflow-x: auto; }
-    .recordatorios-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-
-    /* ── RESPONSIVE ── */
-    @media (max-width: 1100px) { .cards { grid-template-columns: repeat(2,1fr); } }
-    @media (max-width: 900px) {
-      .layout { flex-direction: column; }
-      .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--bmd); }
-      .cards { grid-template-columns: 1fr; }
-      .table-container { overflow-x: auto; }
-      table { min-width: 600px; }
-      .form-grid { grid-template-columns: 1fr; }
-      .search-box input { min-width: 100%; }
-      .panel { overflow-x: auto; }
-    }
-
-
-    .grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; }
+    /* ── PREVIEW ── */
     .preview { background: var(--s2); border: 1px solid var(--bmd); border-radius: var(--rl); padding: 22px; min-height: 260px; }
     .preview-logo { width: 88px; height: 88px; border-radius: var(--rl); background: var(--s3); border: 1px solid var(--bmd); display: flex; align-items: center; justify-content: center; color: var(--t2); margin-bottom: 18px; overflow: hidden; font-size: 13px; }
     .preview-logo img { width: 100%; height: 100%; object-fit: cover; }
     .preview h2 { margin-bottom: 8px; color: var(--accent); font-size: 20px; }
     .preview p { color: var(--t2); margin-bottom: 8px; line-height: 1.5; font-size: 13.5px; }
-    .actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
-    @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 
+    /* ── APPEARANCE TOGGLES ── */
+    .apariencia-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label { font-size: 13.5px; font-weight: 600; color: var(--text); }
+    .toggle-desc { font-size: 12px; color: var(--t2); margin-top: 2px; }
+    .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-track { position: absolute; inset: 0; background: var(--s3); border-radius: 99px; cursor: pointer; transition: background .2s; border: 1px solid var(--bmd); }
+    .toggle-track::after { content: ''; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; background: var(--t2); border-radius: 50%; transition: transform .2s, background .2s; }
+    .toggle-switch input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(20px); background: #040d1a; }
+    .font-size-btns { display: flex; gap: 6px; }
+    .font-size-btns button { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--bmd); background: var(--s2); color: var(--t2); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s; font-family: inherit; }
+    .font-size-btns button.active, .font-size-btns button:hover { background: var(--glow); color: var(--accent); border-color: var(--accent); }
+
+    /* ── LAYOUT GRID ── */
+    .grid-main { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; margin-bottom: 20px; }
+    .grid-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .sidebar { position: fixed; top: 0; left: 0; height: 100vh; z-index: 500; transform: translateX(-100%); width: 260px !important; }
+      .sidebar.open { transform: translateX(0); box-shadow: 4px 0 30px rgba(0,0,0,.4); }
+      .sidebar-overlay.open { display: block; }
+      .hamburger { display: flex; }
+      .main { padding: 18px; }
+      .grid-main, .grid-bottom, .apariencia-grid, .form-grid { grid-template-columns: 1fr; }
+      .form-group.full { grid-column: 1; }
+    }
+    @media (max-width: 1100px) {
+      .grid-main { grid-template-columns: 1fr; }
+      .grid-bottom { grid-template-columns: 1fr; }
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -150,8 +134,9 @@
 </head>
 
 <body>
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
   <div class="layout">
-        <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="brand">
         <div class="brand-mark">✚</div>
         <span class="brand-name">Clínica DS</span>
@@ -169,76 +154,66 @@
 
     <main class="main">
       <div class="topbar">
-        <h2>Configuración</h2>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="hamburger" onclick="toggleSidebar()" aria-label="Menú">
+            <span></span><span></span><span></span>
+          </button>
+          <h2>Configuración</h2>
+        </div>
       </div>
 
-      <section class="grid">
+      <section class="grid-main">
         <div class="panel">
           <h3>Datos de la clínica</h3>
-
           <div class="form-grid">
             <div class="form-group">
               <label for="nombre_clinica">Nombre de la clínica</label>
               <input type="text" id="nombre_clinica">
             </div>
-
             <div class="form-group">
               <label for="slogan">Slogan</label>
               <input type="text" id="slogan">
             </div>
-
             <div class="form-group">
               <label for="telefono">Teléfono</label>
               <input type="text" id="telefono">
             </div>
-
             <div class="form-group">
               <label for="correo">Correo</label>
               <input type="email" id="correo">
             </div>
-
             <div class="form-group">
               <label for="sitio_web">Sitio web</label>
               <input type="text" id="sitio_web">
             </div>
-
             <div class="form-group">
               <label for="logo_url">URL del logo</label>
               <input type="text" id="logo_url">
             </div>
-
             <div class="form-group">
               <label for="color_primario">Color primario</label>
               <input type="color" id="color_primario" value="#38bdf8">
             </div>
-
             <div class="form-group">
               <label for="color_secundario">Color secundario</label>
               <input type="color" id="color_secundario" value="#0f172a">
             </div>
-
             <div class="form-group full">
               <label for="direccion">Dirección</label>
               <textarea id="direccion"></textarea>
             </div>
           </div>
-
           <div class="actions">
             <button class="btn secondary" onclick="cargarConfiguracion()">Cancelar cambios</button>
             <button class="btn" onclick="guardarConfiguracion()">Guardar configuración</button>
           </div>
-
           <div class="mensaje" id="mensajeConfig"></div>
         </div>
 
         <div class="panel">
           <h3>Vista previa</h3>
-
           <div class="preview" id="previewBox">
-            <div class="preview-logo" id="previewLogo">
-              Logo
-            </div>
-
+            <div class="preview-logo" id="previewLogo">Logo</div>
             <h2 id="previewNombre">Clínica DS</h2>
             <p id="previewSlogan">Sistema de gestión clínica</p>
             <p><strong>Teléfono:</strong> <span id="previewTelefono">-</span></p>
@@ -248,14 +223,145 @@
           </div>
         </div>
       </section>
+
+      <section class="grid-bottom">
+        <!-- Apariencia -->
+        <div class="panel">
+          <h3>Apariencia</h3>
+
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Modo claro</div>
+              <div class="toggle-desc">Cambia entre tema oscuro y claro</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggleModoClaro" onchange="aplicarTema()">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Tamaño de fuente</div>
+              <div class="toggle-desc">Ajusta el tamaño del texto en toda la app</div>
+            </div>
+            <div class="font-size-btns">
+              <button onclick="setFontSize(13,'small')" id="fsSmall">S</button>
+              <button onclick="setFontSize(14,'medium')" id="fsMedium">M</button>
+              <button onclick="setFontSize(16,'large')" id="fsLarge">L</button>
+            </div>
+          </div>
+
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Animaciones reducidas</div>
+              <div class="toggle-desc">Reduce transiciones y efectos visuales</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggleReducedMotion" onchange="aplicarReducedMotion()">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Info del sistema -->
+        <div class="panel">
+          <h3>Información del sistema</h3>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Versión</div></div>
+            <span style="color:var(--t2);font-size:13px;">Clínica DS v1.0</span>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Última actualización config</div></div>
+            <span style="color:var(--t2);font-size:13px;" id="fechaActualizacion">—</span>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Idioma</div></div>
+            <span style="color:var(--t2);font-size:13px;">Español (Guatemala)</span>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Zona horaria</div></div>
+            <span style="color:var(--t2);font-size:13px;">America/Guatemala (UTC-6)</span>
+          </div>
+          <div style="margin-top:18px;">
+            <button class="btn secondary" style="width:100%;" onclick="limpiarPreferencias()">Restablecer preferencias de pantalla</button>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
   <script>
+    /* ── Sidebar hamburger ── */
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebarOverlay').classList.toggle('open');
+    }
+    function closeSidebar() {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebarOverlay').classList.remove('open');
+    }
+
+    /* ── Tema ── */
+    function aplicarTema() {
+      const light = document.getElementById('toggleModoClaro').checked;
+      if (light) {
+        document.documentElement.classList.add('light-mode');
+        localStorage.setItem('clinica_theme', 'light');
+      } else {
+        document.documentElement.classList.remove('light-mode');
+        localStorage.removeItem('clinica_theme');
+      }
+    }
+
+    /* ── Fuente ── */
+    function setFontSize(px, key) {
+      document.documentElement.style.fontSize = px + 'px';
+      localStorage.setItem('clinica_fontsize', px);
+      localStorage.setItem('clinica_fontsize_key', key);
+      ['small','medium','large'].forEach(k => document.getElementById('fs'+k.charAt(0).toUpperCase()+k.slice(1)).classList.remove('active'));
+      document.getElementById('fs'+key.charAt(0).toUpperCase()+key.slice(1)).classList.add('active');
+    }
+
+    /* ── Reduced motion ── */
+    function aplicarReducedMotion() {
+      const on = document.getElementById('toggleReducedMotion').checked;
+      if (on) {
+        document.documentElement.style.setProperty('--transition-speed','0s');
+        localStorage.setItem('clinica_reduced_motion','1');
+      } else {
+        document.documentElement.style.removeProperty('--transition-speed');
+        localStorage.removeItem('clinica_reduced_motion');
+      }
+    }
+
+    /* ── Restablecer ── */
+    function limpiarPreferencias() {
+      localStorage.removeItem('clinica_theme');
+      localStorage.removeItem('clinica_fontsize');
+      localStorage.removeItem('clinica_fontsize_key');
+      localStorage.removeItem('clinica_reduced_motion');
+      document.documentElement.classList.remove('light-mode');
+      document.documentElement.style.fontSize = '';
+      document.getElementById('toggleModoClaro').checked = false;
+      document.getElementById('toggleReducedMotion').checked = false;
+      ['small','medium','large'].forEach(k => document.getElementById('fs'+k.charAt(0).toUpperCase()+k.slice(1)).classList.remove('active'));
+      document.getElementById('fsMedium').classList.add('active');
+    }
+
+    /* ── Inicializar controles ── */
+    function initApariencia() {
+      document.getElementById('toggleModoClaro').checked = localStorage.getItem('clinica_theme') === 'light';
+      document.getElementById('toggleReducedMotion').checked = localStorage.getItem('clinica_reduced_motion') === '1';
+      const fsKey = localStorage.getItem('clinica_fontsize_key') || 'medium';
+      ['small','medium','large'].forEach(k => document.getElementById('fs'+k.charAt(0).toUpperCase()+k.slice(1)).classList.remove('active'));
+      document.getElementById('fs'+fsKey.charAt(0).toUpperCase()+fsKey.slice(1)).classList.add('active');
+    }
+
+    /* ── Configuración de clínica ── */
     async function cargarConfiguracion() {
       const res = await fetch('/api/configuracion/');
       const data = await res.json();
-
       document.getElementById('nombre_clinica').value = data.nombre_clinica || '';
       document.getElementById('slogan').value = data.slogan || '';
       document.getElementById('direccion').value = data.direccion || '';
@@ -265,7 +371,7 @@
       document.getElementById('logo_url').value = data.logo_url || '';
       document.getElementById('color_primario').value = data.color_primario || '#38bdf8';
       document.getElementById('color_secundario').value = data.color_secundario || '#0f172a';
-
+      if (data.fecha_actualizacion) document.getElementById('fechaActualizacion').textContent = data.fecha_actualizacion;
       actualizarPreview();
     }
 
@@ -279,19 +385,15 @@
       const logo = document.getElementById('logo_url').value || '';
       const colorPrimario = document.getElementById('color_primario').value || '#38bdf8';
       const colorSecundario = document.getElementById('color_secundario').value || '#0f172a';
-
       document.getElementById('previewNombre').textContent = nombre;
       document.getElementById('previewSlogan').textContent = slogan;
       document.getElementById('previewDireccion').textContent = direccion;
       document.getElementById('previewTelefono').textContent = telefono;
       document.getElementById('previewCorreo').textContent = correo;
       document.getElementById('previewSitio').textContent = sitio;
-
       document.getElementById('previewNombre').style.color = colorPrimario;
       document.getElementById('previewBox').style.background = colorSecundario;
-
       const previewLogo = document.getElementById('previewLogo');
-
       if (logo) {
         previewLogo.innerHTML = `<img src="${logo}" alt="Logo">`;
       } else {
@@ -311,22 +413,16 @@
         color_primario: document.getElementById('color_primario').value,
         color_secundario: document.getElementById('color_secundario').value
       };
-
       if (!payload.nombre_clinica) {
         document.getElementById('mensajeConfig').textContent = 'El nombre de la clínica es obligatorio.';
         return;
       }
-
       const res = await fetch('/api/configuracion/actualizar/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
       const data = await res.json();
-
       if (data.ok) {
         document.getElementById('mensajeConfig').textContent = 'Configuración guardada correctamente.';
         cargarConfiguracion();
@@ -335,35 +431,22 @@
       }
     }
 
-    [
-      'nombre_clinica',
-      'slogan',
-      'direccion',
-      'telefono',
-      'correo',
-      'sitio_web',
-      'logo_url',
-      'color_primario',
-      'color_secundario'
-    ].forEach(id => {
+    ['nombre_clinica','slogan','direccion','telefono','correo','sitio_web','logo_url','color_primario','color_secundario'].forEach(id => {
       document.getElementById(id).addEventListener('input', actualizarPreview);
     });
 
     cargarConfiguracion();
+    initApariencia();
 
     function refrescarConfiguracionAutomaticamente() {
       const activo = document.activeElement;
-      const editando = activo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activo.tagName);
-      if (!editando) {
-        cargarConfiguracion();
-      }
+      const editando = activo && ['INPUT','TEXTAREA','SELECT'].includes(activo.tagName);
+      if (!editando) cargarConfiguracion();
     }
-
-    setInterval(refrescarConfiguracionAutomaticamente, 1000);
+    setInterval(refrescarConfiguracionAutomaticamente, 30000);
   </script>
 
   <script>
-    /* ── Carga logo dinámico desde configuración ── */
     (async function loadSidebarLogo() {
       try {
         const res = await fetch('/api/configuracion/');
@@ -379,19 +462,14 @@
           img.src = cfg.logo_url.trim();
           img.alt = 'Logo';
           img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:10px;';
-          img.onerror = function() {
-            mark.style.padding = '';
-            mark.style.overflow = '';
-            mark.innerHTML = '✚';
-          };
+          img.onerror = function() { mark.style.padding=''; mark.style.overflow=''; mark.innerHTML='✚'; };
           mark.appendChild(img);
         }
-        /* También actualiza nombre si está configurado */
         const brandName = document.querySelector('.brand-name');
         if (brandName && cfg.nombre_clinica && cfg.nombre_clinica.trim()) {
           brandName.textContent = cfg.nombre_clinica.trim();
         }
-      } catch (e) { /* silencioso — muestra ✚ por defecto */ }
+      } catch (e) {}
     })();
   </script>
 </body>
