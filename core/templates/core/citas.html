@@ -343,11 +343,6 @@
           </select>
         </div>
 
-        <div class="form-group full" id="jitsiLinkGroup" style="display:none;">
-          <label>Enlace de reunión (Jitsi Meet)</label>
-          <a id="jitsiLinkDisplay" href="#" target="_blank" style="color:var(--accent);word-break:break-all;font-size:13px;padding:8px 0;display:block;"></a>
-        </div>
-
         <div class="form-group">
           <label for="hora_inicio">Hora inicio</label>
           <input type="hidden" id="hora_inicio">
@@ -780,17 +775,6 @@
       document.getElementById('razon_consulta_detalle').value = props.detalle || '';
       document.getElementById('observaciones').value = props.observaciones || '';
 
-      const linkJitsi = props.link_jitsi || '';
-      const jitsiGroup = document.getElementById('jitsiLinkGroup');
-      const jitsiLink = document.getElementById('jitsiLinkDisplay');
-      if (linkJitsi) {
-        jitsiGroup.style.display = 'block';
-        jitsiLink.href = linkJitsi;
-        jitsiLink.textContent = linkJitsi;
-      } else {
-        jitsiGroup.style.display = 'none';
-      }
-
       onFechaCitaChange();
       document.getElementById('modalBackdrop').style.display = 'flex';
     }
@@ -844,9 +828,6 @@
       document.getElementById('modalidad').value = 'Presencial';
       document.getElementById('razon_consulta_detalle').value = '';
       document.getElementById('observaciones').value = '';
-      document.getElementById('jitsiLinkGroup').style.display = 'none';
-      document.getElementById('jitsiLinkDisplay').href = '#';
-      document.getElementById('jitsiLinkDisplay').textContent = '';
       restaurarOpcionesEstado();
     }
 
@@ -921,7 +902,7 @@
 
         if (data.link_jitsi && !idCitaEditando) {
           cerrarModal();
-          abrirModalJitsi(data.link_jitsi);
+          setTimeout(() => abrirModalJitsi(data.link_jitsi), 150);
         } else {
           setTimeout(() => cerrarModal(), 700);
         }
