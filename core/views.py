@@ -109,6 +109,74 @@ def logout_view(request):
     return redirect('/login/')
 
 
+@csrf_exempt
+@rol_requerido(['Administrador'])
+def admin_limpiar_recordatorios(request):
+    """Vista admin para ver y eliminar recordatorios manuales del dashboard."""
+    TIPOS = ['manual_dashboard', 'manual_dashboard_doctor']
+    placeholders = ', '.join(['%s'] * len(TIPOS))
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT id_recordatorio, canal, tipo_recordatorio, destinatario, estado_envio, fecha_programada "
+            f"FROM recordatorios WHERE tipo_recordatorio IN ({placeholders}) ORDER BY id_recordatorio",
+            TIPOS
+        )
+        filas = cursor.fetchall()
+        cursor.execute('SELECT COUNT(*) FROM recordatorios')
+        total_bd = cursor.fetchone()[0]
+
+    eliminados = None
+    error = None
+    if request.method == 'POST' and request.POST.get('confirmar') == 'si':
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f'DELETE FROM recordatorios WHERE tipo_recordatorio IN ({placeholders})',
+                    TIPOS
+                )
+                eliminados = cursor.rowcount
+                cursor.execute('SELECT COUNT(*) FROM recordatorios')
+                total_bd = cursor.fetchone()[0]
+            filas = []
+        except Exception as e:
+            error = str(e)
+
+    filas_html = ''.join(
+        f'<tr><td>{f[0]}</td><td>{f[1]}</td><td>{f[2]}</td><td>{f[3]}</td><td>{f[4]}</td><td>{f[5]}</td></tr>'
+        for f in filas
+    )
+    confirmar_btn = (
+        '<form method="post" style="margin-top:20px;">'
+        f'<input type="hidden" name="csrfmiddlewaretoken" value="">'
+        '<input type="hidden" name="confirmar" value="si">'
+        f'<p><strong>{len(filas)}</strong> registros se eliminarán. Total en BD: <strong>{total_bd}</strong>. '
+        f'Quedarán: <strong>{total_bd - len(filas)}</strong>.</p>'
+        '<button type="submit" style="background:#fb7185;color:#fff;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;">'
+        'CONFIRMAR BORRADO</button></form>'
+    ) if filas else '<p style="color:#34d399;font-weight:700;">No hay registros manual_dashboard pendientes. BD limpia.</p>'
+
+    ok_msg = f'<p style="color:#34d399;font-size:18px;font-weight:700;">✓ Eliminados: {eliminados}. Quedan: {total_bd} registros totales.</p>' if eliminados is not None else ''
+    err_msg = f'<p style="color:#fb7185;">Error: {error}</p>' if error else ''
+
+    html = f"""<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Limpiar recordatorios | Admin</title>
+    <style>body{{font-family:sans-serif;padding:30px;background:#060d1b;color:#ddeeff;}}
+    table{{border-collapse:collapse;width:100%;margin-top:16px;}}
+    th,td{{padding:8px 12px;border:1px solid #1e3a5f;text-align:left;font-size:13px;}}
+    th{{background:#0f1e36;color:#2dd4bf;}}
+    tr:nth-child(even){{background:#0a1628;}}</style></head>
+    <body>
+    <h2>Admin — Limpiar recordatorios manual_dashboard</h2>
+    {ok_msg}{err_msg}
+    <table><thead><tr><th>ID</th><th>Canal</th><th>Tipo</th><th>Destinatario</th><th>Estado</th><th>Fecha programada</th></tr></thead>
+    <tbody>{filas_html}</tbody></table>
+    {confirmar_btn}
+    <p style="margin-top:20px;"><a href="/dashboard/" style="color:#38bdf8;">← Volver al dashboard</a></p>
+    </body></html>"""
+    return HttpResponse(html)
+
+
 @rol_requerido(['Administrador', 'Recepción', 'Doctor'])
 def dashboard_page(request):
     return render(request, 'core/dashboard.html')
@@ -528,6 +596,30 @@ def cancelar_cita_json(request, id_cita):
             'mensaje': 'Cita cancelada correctamente'
         }, json_dumps_params={'ensure_ascii': False})
 
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+
+
+@csrf_exempt
+@rol_requerido(['Administrador', 'Recepción'])
+def descartar_pendiente_pago(request, id_cita):
+    """Marca la cita como 'No asistió' para sacarla del listado de pendientes de pago."""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'Método no permitido'}, status=405)
+    try:
+        cita = Citas.objects.get(id_cita=id_cita)
+        estado_no_asistio = EstadosCita.objects.filter(
+            nombre_estado__iexact='No asistió'
+        ).first() or EstadosCita.objects.filter(
+            nombre_estado__iexact='No asistio'
+        ).first()
+        if not estado_no_asistio:
+            return JsonResponse({'ok': False, 'error': 'No existe el estado "No asistió" en la base de datos.'}, status=400)
+        cita.id_estado_cita = estado_no_asistio
+        cita.save()
+        return JsonResponse({'ok': True})
+    except Citas.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'Cita no encontrada'}, status=404)
     except Exception as e:
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
@@ -2629,7 +2721,11 @@ def api_dashboard_recordatorios(request):
 
         citas_pasadas_sin_pago = estado_no_cancelado(
             citas_base.filter(fecha_cita__lt=hoy)
-        ).exclude(id_cita__in=citas_con_pago_ids)
+        ).exclude(id_cita__in=citas_con_pago_ids).exclude(
+            id_estado_cita__nombre_estado__iexact='No asistió'
+        ).exclude(
+            id_estado_cita__nombre_estado__iexact='No asistio'
+        )
 
         data = {
             "ok": True,

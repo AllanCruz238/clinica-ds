@@ -169,7 +169,7 @@
       <section class="grid-3">
         <div class="panel">
           <h3>Pacientes pendientes de pago</h3>
-          <div class="tabla-wrap"><table><thead><tr><th>Cita</th><th>Paciente</th><th>Fecha</th><th>Estado</th></tr></thead><tbody id="tbodyPendientesPago"></tbody></table></div>
+          <div class="tabla-wrap"><table><thead><tr><th>Cita</th><th>Paciente</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody id="tbodyPendientesPago"></tbody></table></div>
           <div id="emptyPendientesPago" class="empty" style="display:none;">No hay citas pasadas pendientes de pago.</div>
         </div>
         <div class="panel">
@@ -281,9 +281,37 @@
   }
 
   function renderPendientesPago(items) {
-    renderTabla('tbodyPendientesPago', 'emptyPendientesPago', items, p => `
-      <td>${p.id_cita}</td><td>${texto(p.paciente)}</td><td>${texto(p.fecha_cita)} ${texto(p.hora_inicio)}</td>
-      <td><span class="badge warn">${texto(p.estado)}</span></td>`);
+    const tbody = document.getElementById('tbodyPendientesPago');
+    const empty = document.getElementById('emptyPendientesPago');
+    tbody.innerHTML = '';
+    if (!items.length) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    items.forEach(p => {
+      const tr = document.createElement('tr');
+      tr.id = `pend-${p.id_cita}`;
+      tr.innerHTML = `<td>${p.id_cita}</td><td>${texto(p.paciente)}</td><td>${texto(p.fecha_cita)} ${texto(p.hora_inicio)}</td>
+        <td><span class="badge warn">${texto(p.estado)}</span></td>
+        <td><button onclick="descartarPendiente(${p.id_cita})" style="background:var(--rbg);color:var(--red);border:1px solid var(--red);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:700;" title="Marcar como No asistió y quitar de esta lista">✕ Descartar</button></td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function descartarPendiente(idCita) {
+    if (!confirm('¿Marcar esta cita como "No asistió" y quitarla de pendientes de pago?')) return;
+    try {
+      const res = await fetch(`/api/citas/${idCita}/descartar-pendiente/`, { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        const row = document.getElementById(`pend-${idCita}`);
+        if (row) row.remove();
+        const tbody = document.getElementById('tbodyPendientesPago');
+        if (!tbody.children.length) document.getElementById('emptyPendientesPago').style.display = 'block';
+      } else {
+        alert(data.error || 'No se pudo descartar.');
+      }
+    } catch (e) {
+      alert('Error de conexión.');
+    }
   }
 
   function renderEstadosMes(items) {
