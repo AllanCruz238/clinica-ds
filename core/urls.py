@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/pacientes/<int:id_paciente>/desactivar/', views.desactivar_paciente_json, name='desactivar_paciente_json'),
     path('api/pacientes/<int:id_paciente>/activar/', views.activar_paciente_json, name='activar_paciente_json'),
     path('pacientes/<int:id_paciente>/word/', views.generar_word_paciente, name='generar_word_paciente'),
+    path('pacientes/<int:id_paciente>/factura/', views.generar_factura_paciente, name='generar_factura_paciente'),
 
     # Citas
     path('citas/', views.citas_page, name='citas'),
@@ -32,6 +33,7 @@ urlpatterns = [
     # Pagos
     path('pagos/', views.pagos_page, name='pagos'),
     path('api/pagos/', views.pagos_json, name='pagos_json'),
+    path('api/pagos/historial/', views.historial_citas_pagos_json, name='historial_citas_pagos_json'),
     path('api/pagos/catalogos/', views.pagos_catalogos_json, name='pagos_catalogos_json'),
     path('api/pagos/crear/', views.crear_pago_json, name='crear_pago_json'),
     path('api/pagos/<int:id_pago>/actualizar/', views.actualizar_pago_json, name='actualizar_pago_json'),

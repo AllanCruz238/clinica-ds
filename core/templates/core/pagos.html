@@ -149,6 +149,12 @@
     }
 
     .modal { max-width: 720px !important; }
+    .badge-pago { display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; }
+    .badge-efectivo  { background:rgba(52,211,153,.15);  color:var(--green); }
+    .badge-tarjeta   { background:rgba(56,189,248,.15);  color:var(--a2); }
+    .badge-transfer  { background:rgba(251,191,36,.15);  color:var(--amber); }
+    .badge-pendiente { background:rgba(251,113,133,.15); color:var(--red); }
+    .section-title { font-size:15px; font-weight:700; color:var(--accent); margin:28px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--bmd); }
     .cards { grid-template-columns: repeat(3,1fr); }
       @media (max-width: 768px) {
       .sidebar { position: fixed; top: 0; left: 0; height: 100vh; z-index: 500; transform: translateX(-100%); width: 260px !important; flex-direction: column; }
@@ -231,6 +237,25 @@
           </thead>
 
           <tbody id="tablaPagos"></tbody>
+        </table>
+      </section>
+
+      <p class="section-title">Historial de citas y pagos</p>
+      <section class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Cita</th>
+              <th>Paciente</th>
+              <th>Doctor</th>
+              <th>Fecha</th>
+              <th>Hora</th>
+              <th>Estado</th>
+              <th>Pago</th>
+              <th>Monto</th>
+            </tr>
+          </thead>
+          <tbody id="tablaHistorial"></tbody>
         </table>
       </section>
     </main>
@@ -541,8 +566,44 @@
       }
     }
 
+    async function cargarHistorial() {
+      try {
+        const res = await fetch('/api/pagos/historial/');
+        const data = await res.json();
+        const tbody = document.getElementById('tablaHistorial');
+        tbody.innerHTML = '';
+        if (!data.length) {
+          tbody.innerHTML = '<tr><td colspan="8" class="empty">No hay citas registradas.</td></tr>';
+          return;
+        }
+        data.forEach(c => {
+          const badgeClass =
+            c.tipo_pago === 'Pendiente'    ? 'badge-pendiente' :
+            c.tipo_pago.toLowerCase().includes('efectivo')     ? 'badge-efectivo'  :
+            c.tipo_pago.toLowerCase().includes('tarjeta')      ? 'badge-tarjeta'   :
+            c.tipo_pago.toLowerCase().includes('transfer')     ? 'badge-transfer'  :
+            'badge-tarjeta';
+          tbody.innerHTML += `
+            <tr>
+              <td>${c.id_cita}</td>
+              <td>${c.paciente}</td>
+              <td>${c.doctor}</td>
+              <td>${c.fecha_cita}</td>
+              <td>${c.hora_inicio}</td>
+              <td>${c.estado}</td>
+              <td><span class="badge-pago ${badgeClass}">${c.tipo_pago}</span></td>
+              <td>${c.monto !== null ? 'Q' + Number(c.monto).toFixed(2) : '—'}</td>
+            </tr>`;
+        });
+      } catch (e) {
+        document.getElementById('tablaHistorial').innerHTML =
+          '<tr><td colspan="8" class="empty">Error al cargar historial.</td></tr>';
+      }
+    }
+
     cargarPagos();
     cargarCatalogosPagos();
+    cargarHistorial();
   </script>
 
   <script>

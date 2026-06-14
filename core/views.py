@@ -10,8 +10,10 @@ from django.shortcuts import redirect, render, get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 from django.core.mail import send_mail
 from django.db import connection
 
@@ -651,6 +653,63 @@ def pagos_json(request):
             'fecha_pago': p.fecha_pago.strftime('%Y-%m-%d %H:%M') if p.fecha_pago else '',
             'referencia_pago': p.referencia_pago or '',
             'observaciones': p.observaciones or ''
+        })
+
+    return JsonResponse(data, safe=False, json_dumps_params={'ensure_ascii': False})
+
+
+@rol_requerido(['Administrador', 'Recepción', 'Doctor'])
+def historial_citas_pagos_json(request):
+    citas = list(
+        Citas.objects.select_related(
+            'id_paciente', 'id_doctor__id_usuario', 'id_estado'
+        ).order_by('-fecha_cita', '-id_cita')
+    )
+
+    cita_ids = [c.id_cita for c in citas]
+    pagos_dict = {}
+    for p in Pagos.objects.filter(id_cita__in=cita_ids).select_related('id_tipo_pago').order_by('-id_pago'):
+        if p.id_cita_id not in pagos_dict:
+            pagos_dict[p.id_cita_id] = p
+
+    data = []
+    for c in citas:
+        paciente_nombre = ''
+        if c.id_paciente:
+            paciente_nombre = f"{c.id_paciente.nombres} {c.id_paciente.apellidos}"
+        doctor_nombre = ''
+        if c.id_doctor and c.id_doctor.id_usuario:
+            u = c.id_doctor.id_usuario
+            doctor_nombre = f"{u.nombres} {u.apellidos}"
+        estado = c.id_estado.nombre_estado if c.id_estado else ''
+
+        pago = pagos_dict.get(c.id_cita)
+        if pago:
+            tipo_pago = pago.id_tipo_pago.nombre_tipo_pago if pago.id_tipo_pago else 'Pendiente'
+            monto = float(pago.monto) if pago.monto is not None else None
+        else:
+            tipo_pago = 'Pendiente'
+            monto = None
+
+        try:
+            fecha_str = c.fecha_cita.strftime('%Y-%m-%d') if c.fecha_cita else ''
+        except Exception:
+            fecha_str = str(c.fecha_cita) if c.fecha_cita else ''
+
+        try:
+            hora_str = c.hora_inicio.strftime('%H:%M') if c.hora_inicio else ''
+        except Exception:
+            hora_str = str(c.hora_inicio) if c.hora_inicio else ''
+
+        data.append({
+            'id_cita': c.id_cita,
+            'paciente': paciente_nombre,
+            'doctor': doctor_nombre,
+            'fecha_cita': fecha_str,
+            'hora_inicio': hora_str,
+            'estado': estado,
+            'tipo_pago': tipo_pago,
+            'monto': monto,
         })
 
     return JsonResponse(data, safe=False, json_dumps_params={'ensure_ascii': False})
@@ -2169,6 +2228,162 @@ def generar_word_paciente(request, id_paciente):
     documento.save(response)
     return response
 
+
+
+def generar_factura_paciente(request, id_paciente):
+    paciente = get_object_or_404(Pacientes, id_paciente=id_paciente)
+
+    config = ConfiguracionClinica.objects.first()
+    nombre_clinica = (config.nombre_clinica if config else None) or 'Clínica DS'
+
+    ultima_cita = (
+        Citas.objects.filter(id_paciente=paciente)
+        .select_related('id_doctor__id_usuario', 'id_doctor__id_especialidad', 'id_estado', 'id_motivo_consulta')
+        .order_by('-fecha_cita', '-id_cita')
+        .first()
+    )
+    pago_factura = (
+        Pagos.objects.filter(id_cita=ultima_cita).select_related('id_tipo_pago').first()
+        if ultima_cita else None
+    )
+
+    def _v(v):
+        return str(v).strip() if v not in (None, '') else ''
+
+    def _fecha(v):
+        try:
+            return v.strftime('%d/%m/%Y')
+        except Exception:
+            return _v(v)
+
+    def _hora(v):
+        try:
+            return v.strftime('%H:%M')
+        except Exception:
+            return _v(v)
+
+    def _sombra(cell, color):
+        tc_pr = cell._tc.get_or_add_tcPr()
+        shd = OxmlElement('w:shd')
+        shd.set(qn('w:val'), 'clear')
+        shd.set(qn('w:color'), 'auto')
+        shd.set(qn('w:fill'), color)
+        tc_pr.append(shd)
+
+    doc = Document()
+    for sec in doc.sections:
+        sec.top_margin = Cm(2)
+        sec.bottom_margin = Cm(2.5)
+        sec.left_margin = Cm(2.5)
+        sec.right_margin = Cm(2.5)
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = p.add_run(nombre_clinica.upper())
+    r.bold = True
+    r.font.size = Pt(18)
+    r.font.name = 'Arial'
+    r.font.color.rgb = RGBColor(0x1E, 0x3A, 0x5F)
+
+    p2 = doc.add_paragraph()
+    p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r2 = p2.add_run('COMPROBANTE DE CONSULTA MÉDICA')
+    r2.bold = True
+    r2.font.size = Pt(11)
+    r2.font.name = 'Arial'
+    r2.font.color.rgb = RGBColor(0x2C, 0x7B, 0xB0)
+
+    p3 = doc.add_paragraph()
+    p3.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r3 = p3.add_run(f'Fecha de emisión: {date.today().strftime("%d/%m/%Y")}')
+    r3.font.size = Pt(9)
+    r3.font.name = 'Arial'
+
+    doc.add_paragraph('')
+
+    C_HDR = '1E3A5F'
+    C_LBL = 'D6EAF8'
+    C_VAL = 'FFFFFF'
+
+    tabla = doc.add_table(rows=0, cols=2)
+    tabla.style = 'Table Grid'
+
+    def _hdr(texto):
+        row = tabla.add_row()
+        row.cells[0].merge(row.cells[1])
+        row.cells[0].text = texto
+        _sombra(row.cells[0], C_HDR)
+        for para in row.cells[0].paragraphs:
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in para.runs:
+                run.bold = True
+                run.font.name = 'Arial'
+                run.font.size = Pt(10)
+                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+    def _dato(lbl, val_txt):
+        row = tabla.add_row()
+        row.cells[0].text = lbl
+        row.cells[1].text = val_txt
+        _sombra(row.cells[0], C_LBL)
+        _sombra(row.cells[1], C_VAL)
+        for para in row.cells[0].paragraphs:
+            for run in para.runs:
+                run.bold = True
+                run.font.name = 'Arial'
+                run.font.size = Pt(9)
+                run.font.color.rgb = RGBColor(0x1E, 0x3A, 0x5F)
+        for para in row.cells[1].paragraphs:
+            for run in para.runs:
+                run.font.name = 'Arial'
+                run.font.size = Pt(9)
+
+    _hdr('DATOS DEL PACIENTE')
+    _dato('Paciente', f"{_v(paciente.nombres)} {_v(paciente.apellidos)}".strip())
+    _dato('DPI / Pasaporte', _v(paciente.dpi_pasaporte))
+    _dato('Teléfono', _v(paciente.telefono))
+    _dato('Correo electrónico', _v(paciente.correo))
+
+    _hdr('DATOS DE LA CONSULTA')
+    if ultima_cita:
+        dr_nombre = ''
+        if ultima_cita.id_doctor and ultima_cita.id_doctor.id_usuario:
+            u = ultima_cita.id_doctor.id_usuario
+            dr_nombre = f"{_v(u.nombres)} {_v(u.apellidos)}".strip()
+        esp_nombre = ''
+        if ultima_cita.id_doctor and ultima_cita.id_doctor.id_especialidad:
+            esp_nombre = _v(ultima_cita.id_doctor.id_especialidad.nombre_especialidad)
+        h_ini = _hora(ultima_cita.hora_inicio)
+        h_fin = _hora(ultima_cita.hora_fin)
+        horario = f'{h_ini} - {h_fin}' if h_ini or h_fin else ''
+        _dato('Fecha de consulta', _fecha(ultima_cita.fecha_cita))
+        _dato('Horario', horario)
+        _dato('Doctor', dr_nombre)
+        _dato('Especialidad', esp_nombre)
+        _dato('Modalidad', _v(ultima_cita.modalidad) or 'Presencial')
+        motivo_txt = _v(ultima_cita.id_motivo_consulta.nombre_motivo) if ultima_cita.id_motivo_consulta else ''
+        _dato('Motivo de consulta', motivo_txt)
+        estado_txt = _v(ultima_cita.id_estado.nombre_estado) if ultima_cita.id_estado else ''
+        _dato('Estado', estado_txt)
+    else:
+        _dato('Sin citas registradas', '')
+
+    _hdr('INFORMACIÓN DE PAGO')
+    _dato('Forma de pago', '')
+    _dato('Monto (Q)', f'{pago_factura.monto}' if pago_factura and pago_factura.monto is not None else '')
+    _dato('Referencia', _v(pago_factura.referencia_pago) if pago_factura else '')
+    _dato('Observaciones', _v(pago_factura.observaciones) if pago_factura else '')
+
+    _hdr('FIRMAS')
+    _dato('Firma del paciente', '')
+    _dato('Sello y firma del médico', '')
+
+    doc.add_paragraph('')
+
+    resp = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    resp['Content-Disposition'] = f'attachment; filename="factura_{paciente.id_paciente}.docx"'
+    doc.save(resp)
+    return resp
 
 
 def _hora_como_time(valor):

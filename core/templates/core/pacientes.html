@@ -421,6 +421,7 @@
           <td>
             <button class="btn secondary" onclick='editarPaciente(${JSON.stringify(paciente).replace(/'/g, "&#39;")})'>Editar</button>
             <a href="/pacientes/${paciente.id_paciente}/word/" class="btn word">Word</a>
+            <a href="/pacientes/${paciente.id_paciente}/factura/" class="btn green" style="font-size:12px;padding:6px 10px;">Factura</a>
             ${botonEstado}
           </td>
         `;
