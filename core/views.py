@@ -397,7 +397,11 @@ def crear_cita_json(request):
         paciente = Pacientes.objects.get(id_paciente=body['id_paciente'])
         doctor = Doctores.objects.get(id_doctor=body['id_doctor'])
         estado = EstadosCita.objects.get(id_estado_cita=body['id_estado_cita'])
-        motivo = MotivosConsulta.objects.get(id_motivo_consulta=body['id_motivo_consulta'])
+        id_motivo = body.get('id_motivo_consulta', '')
+        if str(id_motivo) == 'otro' or not id_motivo:
+            motivo, _ = MotivosConsulta.objects.get_or_create(nombre_motivo='Otro')
+        else:
+            motivo = MotivosConsulta.objects.get(id_motivo_consulta=id_motivo)
         creado_por = Usuarios.objects.get(id_usuario=request.session.get('usuario_id'))
 
         try:
@@ -482,7 +486,11 @@ def editar_cita_json(request, id_cita):
         cita.id_paciente = Pacientes.objects.get(id_paciente=body['id_paciente'])
         cita.id_doctor = Doctores.objects.get(id_doctor=body['id_doctor'])
         cita.id_estado_cita = nuevo_estado
-        cita.id_motivo_consulta = MotivosConsulta.objects.get(id_motivo_consulta=body['id_motivo_consulta'])
+        id_motivo_edit = body.get('id_motivo_consulta', '')
+        if str(id_motivo_edit) == 'otro' or not id_motivo_edit:
+            cita.id_motivo_consulta, _ = MotivosConsulta.objects.get_or_create(nombre_motivo='Otro')
+        else:
+            cita.id_motivo_consulta = MotivosConsulta.objects.get(id_motivo_consulta=id_motivo_edit)
         cita.fecha_cita = body['fecha_cita']
         cita.hora_inicio = body['hora_inicio']
         cita.hora_fin = body['hora_fin']

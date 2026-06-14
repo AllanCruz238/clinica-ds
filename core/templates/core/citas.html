@@ -327,7 +327,11 @@
 
         <div class="form-group">
           <label for="id_motivo_consulta">Motivo</label>
-          <select id="id_motivo_consulta"></select>
+          <select id="id_motivo_consulta" onchange="onMotivoChange()"></select>
+        </div>
+        <div class="form-group full" id="motivoOtroGroup" style="display:none;">
+          <label for="motivo_otro_texto">Especifica el motivo</label>
+          <input type="text" id="motivo_otro_texto" placeholder="Describe el motivo de la cita...">
         </div>
 
         <div class="form-group">
@@ -741,8 +745,18 @@
       const select = document.getElementById('id_motivo_consulta');
       select.innerHTML = '<option value="">Seleccione</option>';
       items.forEach(i => {
-        select.innerHTML += `<option value="${i.id_motivo_consulta}">${i.nombre_motivo}</option>`;
+        if ((i.nombre_motivo || '').toLowerCase() !== 'otro') {
+          select.innerHTML += `<option value="${i.id_motivo_consulta}">${i.nombre_motivo}</option>`;
+        }
       });
+      select.innerHTML += '<option value="otro">Otro (especificar)</option>';
+    }
+
+    function onMotivoChange() {
+      const val = document.getElementById('id_motivo_consulta').value;
+      const group = document.getElementById('motivoOtroGroup');
+      group.style.display = val === 'otro' ? 'block' : 'none';
+      if (val !== 'otro') document.getElementById('motivo_otro_texto').value = '';
     }
 
     function abrirModal(fecha = '') {
@@ -774,6 +788,18 @@
       document.getElementById('modalidad').value = props.modalidad || 'Presencial';
       document.getElementById('razon_consulta_detalle').value = props.detalle || '';
       document.getElementById('observaciones').value = props.observaciones || '';
+
+      // Si el motivo es "Otro", mostrar el campo libre con el detalle como texto
+      const motivoSelect = document.getElementById('id_motivo_consulta');
+      const esOtro = motivoSelect.options[motivoSelect.selectedIndex]?.text?.toLowerCase() === 'otro';
+      const motivoGroup = document.getElementById('motivoOtroGroup');
+      if (esOtro) {
+        motivoGroup.style.display = 'block';
+        document.getElementById('motivo_otro_texto').value = props.detalle || '';
+      } else {
+        motivoGroup.style.display = 'none';
+        document.getElementById('motivo_otro_texto').value = '';
+      }
 
       onFechaCitaChange();
       document.getElementById('modalBackdrop').style.display = 'flex';
@@ -828,6 +854,8 @@
       document.getElementById('modalidad').value = 'Presencial';
       document.getElementById('razon_consulta_detalle').value = '';
       document.getElementById('observaciones').value = '';
+      document.getElementById('motivoOtroGroup').style.display = 'none';
+      document.getElementById('motivo_otro_texto').value = '';
       restaurarOpcionesEstado();
     }
 
@@ -868,6 +896,16 @@
         razon_consulta_detalle: document.getElementById('razon_consulta_detalle').value,
         observaciones: document.getElementById('observaciones').value
       };
+
+      // Si motivo = "otro", usar texto personalizado como razon_consulta_detalle
+      if (payload.id_motivo_consulta === 'otro') {
+        const textoOtro = document.getElementById('motivo_otro_texto').value.trim();
+        if (!textoOtro) {
+          document.getElementById('mensajeModal').textContent = 'Especifica el motivo de la cita.';
+          return;
+        }
+        payload.razon_consulta_detalle = textoOtro;
+      }
 
       if (!payload.id_paciente || !payload.id_doctor || !payload.id_estado_cita || !payload.id_motivo_consulta ||
           !payload.fecha_cita || !payload.hora_inicio || !payload.hora_fin) {
