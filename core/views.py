@@ -1,5 +1,6 @@
 from functools import wraps
 import json
+import logging
 import re
 from datetime import date, datetime, timedelta, time
 from urllib.parse import quote
@@ -31,6 +32,8 @@ from .models import (
     Especialidades,
     ConfiguracionClinica
 )
+
+logger = logging.getLogger(__name__)
 
 
 def sistema_login_required(view_func):
@@ -2230,6 +2233,7 @@ def generar_word_paciente(request, id_paciente):
 
 
 
+@rol_requerido(['Administrador', 'Recepción'])
 def generar_factura_paciente(request, id_paciente):
     paciente = get_object_or_404(Pacientes, id_paciente=id_paciente)
 
@@ -2837,11 +2841,11 @@ def generar_recordatorios_automaticos(request):
 
 
 
+@rol_requerido(['Administrador', 'Recepción', 'Doctor'])
 def api_dashboard_recordatorios(request):
     """
-    Dashboard corregido para producción en Render/PostgreSQL.
+    Dashboard para producción en Render/PostgreSQL.
     No usa funciones MySQL como CURDATE(), DATE_ADD(), MONTH() o YEAR().
-    Además evita error 500: si algo falla, devuelve el error en el JSON para poder diagnosticarlo.
     """
     try:
         from decimal import Decimal
@@ -2963,9 +2967,6 @@ def api_dashboard_recordatorios(request):
             "pacientes_pendientes_pago": [],
             "citas_estado_mes": [],
             "ultima_actualizacion_servidor": ahora_gt.strftime('%H:%M:%S'),
-            "debug_total_citas": Citas.objects.count(),
-            "debug_total_pagos": Pagos.objects.count(),
-            "debug_hoy_gt": str(hoy),
         }
 
         for p in pagos_mes_qs.order_by('-fecha_pago', '-id_pago')[:8]:
@@ -3046,38 +3047,19 @@ def api_dashboard_recordatorios(request):
                     "fecha_programada": str(fila[5]) if fila[5] else '',
                     "estado_envio": fila[6],
                 })
-        except Exception as e:
+        except Exception:
             try:
                 connection.rollback()
             except Exception:
                 pass
-            data["debug_error_recordatorios"] = str(e)
+            logger.exception('Error consultando recordatorios del dashboard')
 
         return JsonResponse(data, json_dumps_params={'ensure_ascii': False})
 
-    except Exception as e:
-        import traceback
-        return JsonResponse({
-            "ok": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-            "citas_hoy": 0,
-            "citas_proximos_7_dias": 0,
-            "pacientes_con_deuda": 0,
-            "ingresos_semanales": 0,
-            "ingresos_mes": 0,
-            "pagos_mes": 0,
-            "ultimo_pago": 0,
-            "tasa_cancelaciones": 0,
-            "canceladas_mes": 0,
-            "total_citas_mes": 0,
-            "correos_pendientes": 0,
-            "whatsapp_pendientes": 0,
-            "total_recordatorios_pendientes": 0,
-            "recordatorios_pendientes": [],
-            "pagos_recientes": [],
-            "citas_proximas": [],
-            "pacientes_pendientes_pago": [],
-            "citas_estado_mes": [],
-            "ultima_actualizacion_servidor": datetime.now().strftime('%H:%M:%S')
-        }, json_dumps_params={'ensure_ascii': False})
+    except Exception:
+        logger.exception('Error generando el dashboard')
+        return JsonResponse(
+            {'ok': False, 'error': 'Error interno'},
+            status=500,
+            json_dumps_params={'ensure_ascii': False},
+        )
