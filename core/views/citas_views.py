@@ -23,6 +23,15 @@ def citas_json(request):
             return JsonResponse([], safe=False, json_dumps_params={'ensure_ascii': False})
         citas = citas.filter(id_doctor=doctor)
 
+    # Respetar el rango que envía el calendario (FullCalendar manda ?start y ?end
+    # como ISO; tomamos solo la parte de fecha YYYY-MM-DD).
+    start = request.GET.get('start')
+    end = request.GET.get('end')
+    if start:
+        citas = citas.filter(fecha_cita__gte=start[:10])
+    if end:
+        citas = citas.filter(fecha_cita__lte=end[:10])
+
     eventos = []
 
     for c in citas:

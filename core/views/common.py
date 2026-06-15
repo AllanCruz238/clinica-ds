@@ -8,7 +8,8 @@ from datetime import date, datetime, timedelta, time
 from urllib.parse import quote
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
-from django.db.models import Sum, Count
+from django.core.paginator import Paginator
+from django.db.models import Sum, Count, Q
 from django.middleware.csrf import get_token
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
@@ -39,6 +40,8 @@ from ..models import (
 )
 
 __all__ = [
+    'Q',
+    '_aplicar_paginacion',
     'Auditoria',
     'BLOQUEO_LOGIN_SEGUNDOS',
     'Citas',
@@ -115,6 +118,34 @@ BLOQUEO_LOGIN_SEGUNDOS = 15 * 60
 
 
 _DUMMY_PASSWORD_HASH = make_password('timing-dummy-password')
+
+
+def _aplicar_paginacion(request, data_list):
+    """
+    Paginación opcional y compatible hacia atrás. Si la petición trae ?page,
+    devuelve un dict {results, count, page, page_size, num_pages}; si no, devuelve
+    None para que la vista responda la lista completa como antes.
+    """
+    if not request.GET.get('page'):
+        return None
+    try:
+        page = int(request.GET.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.GET.get('page_size', 20))
+    except (TypeError, ValueError):
+        page_size = 20
+    page_size = max(1, min(page_size, 200))
+    paginator = Paginator(data_list, page_size)
+    pagina = paginator.get_page(page)
+    return {
+        'results': list(pagina.object_list),
+        'count': paginator.count,
+        'page': pagina.number,
+        'page_size': page_size,
+        'num_pages': paginator.num_pages,
+    }
 
 
 def _client_ip(request):

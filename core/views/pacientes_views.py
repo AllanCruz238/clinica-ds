@@ -21,6 +21,16 @@ def pacientes_json(request):
         ).values_list('id_paciente_id', flat=True)
         pacientes_qs = pacientes_qs.filter(id_paciente__in=ids_pacientes)
 
+    busqueda = request.GET.get('search', '').strip()
+    if busqueda:
+        pacientes_qs = pacientes_qs.filter(
+            Q(nombres__icontains=busqueda)
+            | Q(apellidos__icontains=busqueda)
+            | Q(dpi_pasaporte__icontains=busqueda)
+            | Q(telefono__icontains=busqueda)
+            | Q(correo__icontains=busqueda)
+        )
+
     data = list(
         pacientes_qs.values(
             'id_paciente',
@@ -39,6 +49,9 @@ def pacientes_json(request):
         )
     )
 
+    paginado = _aplicar_paginacion(request, data)
+    if paginado is not None:
+        return JsonResponse(paginado, json_dumps_params={'ensure_ascii': False})
     return JsonResponse(data, safe=False, json_dumps_params={'ensure_ascii': False})
 
 

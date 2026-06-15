@@ -11,6 +11,15 @@ def usuarios_page(request):
 def usuarios_json(request):
     usuarios = Usuarios.objects.select_related('id_rol').order_by('-id_usuario')
 
+    busqueda = request.GET.get('search', '').strip()
+    if busqueda:
+        usuarios = usuarios.filter(
+            Q(username__icontains=busqueda)
+            | Q(nombres__icontains=busqueda)
+            | Q(apellidos__icontains=busqueda)
+            | Q(correo__icontains=busqueda)
+        )
+
     data = []
 
     for u in usuarios:
@@ -28,6 +37,9 @@ def usuarios_json(request):
             'ultimo_acceso': u.ultimo_acceso.strftime('%Y-%m-%d %H:%M') if u.ultimo_acceso else ''
         })
 
+    paginado = _aplicar_paginacion(request, data)
+    if paginado is not None:
+        return JsonResponse(paginado, json_dumps_params={'ensure_ascii': False})
     return JsonResponse(data, safe=False, json_dumps_params={'ensure_ascii': False})
 
 

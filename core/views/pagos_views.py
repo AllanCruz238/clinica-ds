@@ -15,6 +15,14 @@ def pagos_json(request):
         'id_tipo_pago'
     ).order_by('-id_pago')
 
+    busqueda = request.GET.get('search', '').strip()
+    if busqueda:
+        pagos = pagos.filter(
+            Q(id_paciente__nombres__icontains=busqueda)
+            | Q(id_paciente__apellidos__icontains=busqueda)
+            | Q(referencia_pago__icontains=busqueda)
+        )
+
     data = []
 
     for p in pagos:
@@ -31,6 +39,9 @@ def pagos_json(request):
             'observaciones': p.observaciones or ''
         })
 
+    paginado = _aplicar_paginacion(request, data)
+    if paginado is not None:
+        return JsonResponse(paginado, json_dumps_params={'ensure_ascii': False})
     return JsonResponse(data, safe=False, json_dumps_params={'ensure_ascii': False})
 
 
