@@ -22,6 +22,7 @@ from django.core.mail import send_mail
 from django.db import connection
 
 from .models import (
+    Auditoria,
     Pacientes,
     Citas,
     Pagos,
@@ -86,6 +87,24 @@ def _hay_choque_citas(doctor, fecha, hora_inicio, hora_fin, excluir_id=None):
     if excluir_id is not None:
         qs = qs.exclude(id_cita=excluir_id)
     return qs.exists()
+
+
+def registrar_auditoria(id_usuario, tabla, id_registro, accion, descripcion=''):
+    """
+    Registra una acción en la tabla de auditoría. Nunca debe romper la
+    operación principal: si algo falla, solo se loggea.
+    """
+    try:
+        Auditoria.objects.create(
+            id_usuario_id=id_usuario or None,
+            tabla_afectada=tabla,
+            id_registro_afectado=id_registro,
+            accion=accion,
+            descripcion=descripcion,
+            fecha_evento=timezone.now(),
+        )
+    except Exception:
+        logger.exception('No se pudo registrar la auditoría (%s/%s)', tabla, accion)
 
 
 def sistema_login_required(view_func):
@@ -363,6 +382,11 @@ def crear_paciente_json(request):
             activo=1
         )
 
+        registrar_auditoria(
+            request.session.get('usuario_id'), 'pacientes', nuevo_paciente.id_paciente,
+            'crear', f"Paciente creado: {nuevo_paciente.nombres} {nuevo_paciente.apellidos}".strip()
+        )
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Paciente creado correctamente',
@@ -397,6 +421,11 @@ def actualizar_paciente_json(request, id_paciente):
 
         paciente.save()
 
+        registrar_auditoria(
+            request.session.get('usuario_id'), 'pacientes', paciente.id_paciente,
+            'editar', f"Paciente actualizado: {paciente.nombres} {paciente.apellidos}".strip()
+        )
+
         return JsonResponse({'ok': True, 'mensaje': 'Paciente actualizado'}, json_dumps_params={'ensure_ascii': False})
 
     except Exception as e:
@@ -412,6 +441,8 @@ def desactivar_paciente_json(request, id_paciente):
         paciente = Pacientes.objects.get(id_paciente=id_paciente)
         paciente.activo = 0
         paciente.save()
+
+        registrar_auditoria(request.session.get('usuario_id'), 'pacientes', paciente.id_paciente, 'desactivar', 'Paciente desactivado')
 
         return JsonResponse({'ok': True}, json_dumps_params={'ensure_ascii': False})
 
@@ -429,6 +460,8 @@ def activar_paciente_json(request, id_paciente):
         paciente = Pacientes.objects.get(id_paciente=id_paciente)
         paciente.activo = 1
         paciente.save()
+
+        registrar_auditoria(request.session.get('usuario_id'), 'pacientes', paciente.id_paciente, 'activar', 'Paciente activado')
 
         return JsonResponse({'ok': True}, json_dumps_params={'ensure_ascii': False})
 
@@ -625,6 +658,11 @@ def crear_cita_json(request):
         if (body.get('modalidad') or '').lower() == 'virtual':
             link_jitsi = f"https://meet.jit.si/ClinicaDS-{nueva_cita.id_cita}"
 
+        registrar_auditoria(
+            request.session.get('usuario_id'), 'citas', nueva_cita.id_cita,
+            'crear', f"Cita creada para {fecha_cita_val} {body.get('hora_inicio', '')}"
+        )
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Cita creada correctamente',
@@ -693,6 +731,8 @@ def editar_cita_json(request, id_cita):
         cita.observaciones = body.get('observaciones', '')
         cita.save()
 
+        registrar_auditoria(request.session.get('usuario_id'), 'citas', cita.id_cita, 'editar', 'Cita actualizada')
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Cita actualizada correctamente'
@@ -715,6 +755,8 @@ def cancelar_cita_json(request, id_cita):
         estado_cancelada = EstadosCita.objects.get(nombre_estado__iexact='Cancelada')
         cita.id_estado_cita = estado_cancelada
         cita.save()
+
+        registrar_auditoria(request.session.get('usuario_id'), 'citas', cita.id_cita, 'cancelar', 'Cita cancelada')
 
         return JsonResponse({
             'ok': True,
@@ -907,6 +949,11 @@ def crear_pago_json(request):
             observaciones=body.get('observaciones', '')
         )
 
+        registrar_auditoria(
+            request.session.get('usuario_id'), 'pagos', nuevo_pago.id_pago,
+            'crear', f"Pago registrado por Q{nuevo_pago.monto}"
+        )
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Pago registrado correctamente',
@@ -945,6 +992,8 @@ def actualizar_pago_json(request, id_pago):
         pago.observaciones = body.get('observaciones', '').strip()
         pago.save()
 
+        registrar_auditoria(request.session.get('usuario_id'), 'pagos', pago.id_pago, 'editar', 'Pago actualizado')
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Pago actualizado correctamente'
@@ -964,6 +1013,8 @@ def eliminar_pago_json(request, id_pago):
     try:
         pago = Pagos.objects.get(id_pago=id_pago)
         pago.delete()
+
+        registrar_auditoria(request.session.get('usuario_id'), 'pagos', id_pago, 'eliminar', 'Pago eliminado')
 
         return JsonResponse({
             'ok': True,
@@ -1089,6 +1140,11 @@ def crear_nota_json(request):
             fecha_nota=timezone.now()
         )
 
+        registrar_auditoria(
+            request.session.get('usuario_id'), 'notas_clinicas', nueva_nota.id_nota_clinica,
+            'crear', f"Nota clínica creada para paciente {paciente.id_paciente}"
+        )
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Nota clínica guardada correctamente',
@@ -1205,6 +1261,11 @@ def crear_doctor_json(request):
             activo=1
         )
 
+        registrar_auditoria(
+            request.session.get('usuario_id'), 'doctores', nuevo_doctor.id_doctor,
+            'crear', f"Doctor creado para usuario {usuario.username}"
+        )
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Doctor creado correctamente',
@@ -1254,6 +1315,8 @@ def actualizar_doctor_json(request, id_doctor):
             doctor.duracion_cita_minutos = 60
         doctor.save()
 
+        registrar_auditoria(request.session.get('usuario_id'), 'doctores', doctor.id_doctor, 'editar', 'Doctor actualizado')
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Doctor actualizado correctamente'
@@ -1272,6 +1335,8 @@ def desactivar_doctor_json(request, id_doctor):
         doctor.activo = 0
         doctor.save()
 
+        registrar_auditoria(request.session.get('usuario_id'), 'doctores', doctor.id_doctor, 'desactivar', 'Doctor desactivado')
+
         return JsonResponse({'ok': True}, json_dumps_params={'ensure_ascii': False})
 
     except Exception as e:
@@ -1287,6 +1352,8 @@ def activar_doctor_json(request, id_doctor):
         doctor = Doctores.objects.get(id_doctor=id_doctor)
         doctor.activo = 1
         doctor.save()
+
+        registrar_auditoria(request.session.get('usuario_id'), 'doctores', doctor.id_doctor, 'activar', 'Doctor activado')
 
         return JsonResponse({'ok': True}, json_dumps_params={'ensure_ascii': False})
 
@@ -1371,6 +1438,11 @@ def crear_usuario_json(request):
             fecha_creacion=timezone.now()
         )
 
+        registrar_auditoria(
+            request.session.get('usuario_id'), 'usuarios', nuevo_usuario.id_usuario,
+            'crear', f"Usuario creado: {nuevo_usuario.username}"
+        )
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Usuario creado correctamente',
@@ -1414,6 +1486,8 @@ def actualizar_usuario_json(request, id_usuario):
 
         usuario.save()
 
+        registrar_auditoria(request.session.get('usuario_id'), 'usuarios', usuario.id_usuario, 'editar', f"Usuario actualizado: {usuario.username}")
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Usuario actualizado correctamente'
@@ -1437,6 +1511,8 @@ def desactivar_usuario_json(request, id_usuario):
         usuario.activo = 0
         usuario.save()
 
+        registrar_auditoria(request.session.get('usuario_id'), 'usuarios', usuario.id_usuario, 'desactivar', f"Usuario desactivado: {usuario.username}")
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Usuario desactivado correctamente'
@@ -1455,6 +1531,8 @@ def activar_usuario_json(request, id_usuario):
         usuario = Usuarios.objects.get(id_usuario=id_usuario)
         usuario.activo = 1
         usuario.save()
+
+        registrar_auditoria(request.session.get('usuario_id'), 'usuarios', usuario.id_usuario, 'activar', f"Usuario activado: {usuario.username}")
 
         return JsonResponse({
             'ok': True,
@@ -1659,6 +1737,8 @@ def actualizar_configuracion_json(request):
         config.color_secundario = body.get('color_secundario', '#0f172a')
 
         config.save()
+
+        registrar_auditoria(request.session.get('usuario_id'), 'configuracion_clinica', config.id_configuracion, 'editar', 'Configuración actualizada')
 
         return JsonResponse({
             'ok': True,
