@@ -665,7 +665,7 @@ def pagos_json(request):
 def historial_citas_pagos_json(request):
     citas = list(
         Citas.objects.select_related(
-            'id_paciente', 'id_doctor__id_usuario', 'id_estado'
+            'id_paciente', 'id_doctor__id_usuario', 'id_estado_cita'
         ).order_by('-fecha_cita', '-id_cita')
     )
 
@@ -684,7 +684,7 @@ def historial_citas_pagos_json(request):
         if c.id_doctor and c.id_doctor.id_usuario:
             u = c.id_doctor.id_usuario
             doctor_nombre = f"{u.nombres} {u.apellidos}"
-        estado = c.id_estado.nombre_estado if c.id_estado else ''
+        estado = c.id_estado_cita.nombre_estado if c.id_estado_cita else ''
 
         pago = pagos_dict.get(c.id_cita)
         if pago:
@@ -2242,7 +2242,7 @@ def generar_factura_paciente(request, id_paciente):
 
     ultima_cita = (
         Citas.objects.filter(id_paciente=paciente)
-        .select_related('id_doctor__id_usuario', 'id_doctor__id_especialidad', 'id_estado', 'id_motivo_consulta')
+        .select_related('id_doctor__id_usuario', 'id_doctor__id_especialidad', 'id_estado_cita', 'id_motivo_consulta')
         .order_by('-fecha_cita', '-id_cita')
         .first()
     )
@@ -2367,7 +2367,7 @@ def generar_factura_paciente(request, id_paciente):
         _dato('Modalidad', _v(ultima_cita.modalidad) or 'Presencial')
         motivo_txt = _v(ultima_cita.id_motivo_consulta.nombre_motivo) if ultima_cita.id_motivo_consulta else ''
         _dato('Motivo de consulta', motivo_txt)
-        estado_txt = _v(ultima_cita.id_estado.nombre_estado) if ultima_cita.id_estado else ''
+        estado_txt = _v(ultima_cita.id_estado_cita.nombre_estado) if ultima_cita.id_estado_cita else ''
         _dato('Estado', estado_txt)
     else:
         _dato('Sin citas registradas', '')
