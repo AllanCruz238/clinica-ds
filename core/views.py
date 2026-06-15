@@ -66,6 +66,28 @@ def _doctor_de_sesion(request):
     return Doctores.objects.filter(id_usuario_id=uid).first()
 
 
+def _hay_choque_citas(doctor, fecha, hora_inicio, hora_fin, excluir_id=None):
+    """
+    True si el doctor ya tiene otra cita (no cancelada) que se solapa en
+    fecha/hora con el rango indicado.
+    """
+    if not (doctor and fecha and hora_inicio and hora_fin):
+        return False
+    qs = Citas.objects.filter(
+        id_doctor=doctor,
+        fecha_cita=fecha,
+        hora_inicio__lt=hora_fin,
+        hora_fin__gt=hora_inicio,
+    ).exclude(
+        id_estado_cita__nombre_estado__iexact='Cancelada'
+    ).exclude(
+        id_estado_cita__nombre_estado__iexact='Cancelado'
+    )
+    if excluir_id is not None:
+        qs = qs.exclude(id_cita=excluir_id)
+    return qs.exists()
+
+
 def sistema_login_required(view_func):
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
@@ -576,6 +598,15 @@ def crear_cita_json(request):
                     'error': 'Las citas en fechas u horas pasadas solo pueden guardarse con estado Cancelada o No asistió.'
                 }, status=400)
 
+        # Evitar choques con otra cita del mismo doctor (salvo si esta es Cancelada).
+        if estado.nombre_estado.lower() not in {'cancelada', 'cancelado'}:
+            hora_fin_val = _hora_como_time(body.get('hora_fin'))
+            if _hay_choque_citas(doctor, fecha_cita_val, hora_inicio_val, hora_fin_val):
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'El doctor ya tiene otra cita que se solapa con ese horario.'
+                }, status=400)
+
         nueva_cita = Citas.objects.create(
             id_paciente=paciente,
             id_doctor=doctor,
@@ -635,8 +666,19 @@ def editar_cita_json(request, id_cita):
                     'error': 'Las citas en fechas u horas pasadas solo pueden tener estado Cancelada o No asistió.'
                 }, status=400)
 
+        doctor_edit = Doctores.objects.get(id_doctor=body['id_doctor'])
+
+        # Evitar choques con otra cita del mismo doctor (salvo si esta es Cancelada).
+        if nuevo_estado.nombre_estado.lower() not in {'cancelada', 'cancelado'}:
+            hora_fin_val = _hora_como_time(body.get('hora_fin'))
+            if _hay_choque_citas(doctor_edit, fecha_cita_val, hora_inicio_val, hora_fin_val, excluir_id=cita.id_cita):
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'El doctor ya tiene otra cita que se solapa con ese horario.'
+                }, status=400)
+
         cita.id_paciente = Pacientes.objects.get(id_paciente=body['id_paciente'])
-        cita.id_doctor = Doctores.objects.get(id_doctor=body['id_doctor'])
+        cita.id_doctor = doctor_edit
         cita.id_estado_cita = nuevo_estado
         id_motivo_edit = body.get('id_motivo_consulta', '')
         if str(id_motivo_edit) == 'otro' or not id_motivo_edit:
