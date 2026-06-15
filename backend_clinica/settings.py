@@ -1,5 +1,6 @@
 import os
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 """
 Django settings for backend_clinica project.
@@ -23,18 +24,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-2)j)%49^74_zld+(#gg9@w3zw^uzjbao51v7viff3weu11nf)e'
+# La SECRET_KEY se lee SIEMPRE de una variable de entorno. Si no existe, la
+# aplicación no debe arrancar (en lugar de usar una clave insegura quemada).
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    raise ImproperlyConfigured(
+        'Falta la variable de entorno SECRET_KEY. Configúrala antes de iniciar la aplicación.'
+    )
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
+# ALLOWED_HOSTS se lee de entorno (lista separada por comas). Si no se define,
+# se usa una lista por defecto segura para desarrollo y los dominios conocidos.
+_default_allowed_hosts = '127.0.0.1,localhost,.onrender.com,nubnest.com,www.nubnest.com,app.nubnest.com'
 ALLOWED_HOSTS = [
-    '127.0.0.1',
-    'localhost',
-    '.onrender.com',
-    'nubnest.com',
-    'www.nubnest.com',
-    'app.nubnest.com',
+    h.strip()
+    for h in os.environ.get('ALLOWED_HOSTS', _default_allowed_hosts).split(',')
+    if h.strip()
 ]
 
 
@@ -134,6 +141,24 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 EMAIL_BACKEND = 'anymail.backends.resend.EmailBackend'
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL') or 'onboarding@resend.dev'
+# La API key de Resend se lee SOLO de entorno, sin fallback quemado en el código.
 ANYMAIL = {
-    'RESEND_API_KEY': os.environ.get('RESEND_API_KEY') or 're_iafxYUkE_BfBXttA1eppKi86i5vWBWLmC',
+    'RESEND_API_KEY': os.environ.get('RESEND_API_KEY', ''),
 }
+
+
+# Seguridad adicional en producción (cuando DEBUG=False).
+# Render termina TLS en su proxy, por eso confiamos en la cabecera X-Forwarded-Proto.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    CSRF_TRUSTED_ORIGINS = [
+        o.strip()
+        for o in os.environ.get(
+            'CSRF_TRUSTED_ORIGINS',
+            'https://*.onrender.com,https://nubnest.com,https://www.nubnest.com,https://app.nubnest.com',
+        ).split(',')
+        if o.strip()
+    ]
