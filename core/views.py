@@ -7,10 +7,11 @@ from urllib.parse import quote
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
 from django.db.models import Sum, Count
+from django.middleware.csrf import get_token
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -85,13 +86,13 @@ def rol_requerido(roles_permitidos):
     return decorator
 
 
+@ensure_csrf_cookie
 def login_page(request):
     if request.session.get('usuario_id'):
         return redirect('/dashboard/')
     return render(request, 'core/login.html')
 
 
-@csrf_exempt
 def login_json(request):
     if request.method != 'POST':
         return JsonResponse({'ok': False, 'error': 'Método no permitido'}, status=405)
@@ -162,7 +163,6 @@ def logout_view(request):
     return redirect('/login/')
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def admin_limpiar_recordatorios(request):
     """Vista admin para ver y eliminar recordatorios manuales del dashboard."""
@@ -199,9 +199,10 @@ def admin_limpiar_recordatorios(request):
         f'<tr><td>{f[0]}</td><td>{f[1]}</td><td>{f[2]}</td><td>{f[3]}</td><td>{f[4]}</td><td>{f[5]}</td></tr>'
         for f in filas
     )
+    csrf_token = get_token(request)
     confirmar_btn = (
         '<form method="post" style="margin-top:20px;">'
-        f'<input type="hidden" name="csrfmiddlewaretoken" value="">'
+        f'<input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">'
         '<input type="hidden" name="confirmar" value="si">'
         f'<p><strong>{len(filas)}</strong> registros se eliminarán. Total en BD: <strong>{total_bd}</strong>. '
         f'Quedarán: <strong>{total_bd - len(filas)}</strong>.</p>'
@@ -231,6 +232,7 @@ def admin_limpiar_recordatorios(request):
 
 
 @rol_requerido(['Administrador', 'Recepción', 'Doctor'])
+@ensure_csrf_cookie
 def dashboard_page(request):
     return render(request, 'core/dashboard.html')
 
@@ -262,6 +264,7 @@ def dashboard_json(request):
 
 
 @rol_requerido(['Administrador', 'Recepción', 'Doctor'])
+@ensure_csrf_cookie
 def pacientes_page(request):
     return render(request, 'core/pacientes.html')
 
@@ -289,7 +292,6 @@ def pacientes_json(request):
     return JsonResponse(data, safe=False, json_dumps_params={'ensure_ascii': False})
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def crear_paciente_json(request):
     if request.method != 'POST':
@@ -323,7 +325,6 @@ def crear_paciente_json(request):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def actualizar_paciente_json(request, id_paciente):
     if request.method != 'POST':
@@ -354,7 +355,6 @@ def actualizar_paciente_json(request, id_paciente):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def desactivar_paciente_json(request, id_paciente):
     if request.method != 'POST':
@@ -372,7 +372,6 @@ def desactivar_paciente_json(request, id_paciente):
 
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def activar_paciente_json(request, id_paciente):
     if request.method != 'POST':
@@ -390,6 +389,7 @@ def activar_paciente_json(request, id_paciente):
 
 
 @rol_requerido(['Administrador', 'Recepción', 'Doctor'])
+@ensure_csrf_cookie
 def citas_page(request):
     return render(request, 'core/citas.html')
 
@@ -506,7 +506,6 @@ def catalogos_citas_json(request):
     }, json_dumps_params={'ensure_ascii': False})
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def crear_cita_json(request):
     if request.method != 'POST':
@@ -573,7 +572,6 @@ def crear_cita_json(request):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def editar_cita_json(request, id_cita):
     if request.method != 'POST':
@@ -632,7 +630,6 @@ def editar_cita_json(request, id_cita):
 actualizar_cita_json = editar_cita_json
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def cancelar_cita_json(request, id_cita):
     if request.method != 'POST':
@@ -653,7 +650,6 @@ def cancelar_cita_json(request, id_cita):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def descartar_pendiente_pago(request, id_cita):
     """Marca la cita como 'No asistió' para sacarla del listado de pendientes de pago."""
@@ -678,6 +674,7 @@ def descartar_pendiente_pago(request, id_cita):
 
 
 @rol_requerido(['Administrador', 'Recepción'])
+@ensure_csrf_cookie
 def pagos_page(request):
     return render(request, 'core/pagos.html')
 
@@ -803,7 +800,6 @@ def pagos_catalogos_json(request):
     }, json_dumps_params={'ensure_ascii': False})
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def crear_pago_json(request):
     if request.method != 'POST':
@@ -839,7 +835,6 @@ def crear_pago_json(request):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def actualizar_pago_json(request, id_pago):
     if request.method != 'POST':
@@ -879,7 +874,6 @@ def actualizar_pago_json(request, id_pago):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Recepción'])
 def eliminar_pago_json(request, id_pago):
     if request.method != 'POST':
@@ -901,6 +895,7 @@ def eliminar_pago_json(request, id_pago):
 
 
 @rol_requerido(['Administrador', 'Doctor'])
+@ensure_csrf_cookie
 def notas_page(request):
     return render(request, 'core/notas.html')
 
@@ -980,7 +975,6 @@ def notas_catalogos_json(request):
     }, json_dumps_params={'ensure_ascii': False})
 
 
-@csrf_exempt
 @rol_requerido(['Administrador', 'Doctor'])
 def crear_nota_json(request):
     if request.method != 'POST':
@@ -1017,6 +1011,7 @@ def crear_nota_json(request):
 
 
 @rol_requerido(['Administrador'])
+@ensure_csrf_cookie
 def doctores_page(request):
     return render(request, 'core/doctores.html')
 
@@ -1079,7 +1074,6 @@ def doctores_catalogos_json(request):
     }, json_dumps_params={'ensure_ascii': False})
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def crear_doctor_json(request):
     if request.method != 'POST':
@@ -1132,7 +1126,6 @@ def crear_doctor_json(request):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def actualizar_doctor_json(request, id_doctor):
     if request.method != 'POST':
@@ -1180,7 +1173,6 @@ def actualizar_doctor_json(request, id_doctor):
     except Exception as e:
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def desactivar_doctor_json(request, id_doctor):
     if request.method != 'POST':
@@ -1197,7 +1189,6 @@ def desactivar_doctor_json(request, id_doctor):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def activar_doctor_json(request, id_doctor):
     if request.method != 'POST':
@@ -1215,6 +1206,7 @@ def activar_doctor_json(request, id_doctor):
 
 
 @rol_requerido(['Administrador'])
+@ensure_csrf_cookie
 def usuarios_page(request):
     return render(request, 'core/usuarios.html')
 
@@ -1255,7 +1247,6 @@ def usuarios_catalogos_json(request):
     return JsonResponse({'roles': roles}, json_dumps_params={'ensure_ascii': False})
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def crear_usuario_json(request):
     if request.method != 'POST':
@@ -1301,7 +1292,6 @@ def crear_usuario_json(request):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def actualizar_usuario_json(request, id_usuario):
     if request.method != 'POST':
@@ -1344,7 +1334,6 @@ def actualizar_usuario_json(request, id_usuario):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def desactivar_usuario_json(request, id_usuario):
     if request.method != 'POST':
@@ -1368,7 +1357,6 @@ def desactivar_usuario_json(request, id_usuario):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def activar_usuario_json(request, id_usuario):
     if request.method != 'POST':
@@ -1389,6 +1377,7 @@ def activar_usuario_json(request, id_usuario):
 
 
 @rol_requerido(['Administrador'])
+@ensure_csrf_cookie
 def roles_page(request):
     return render(request, 'core/roles.html')
 
@@ -1413,7 +1402,6 @@ def roles_json(request):
     return JsonResponse(data, safe=False, json_dumps_params={'ensure_ascii': False})
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def crear_rol_json(request):
     if request.method != 'POST':
@@ -1445,7 +1433,6 @@ def crear_rol_json(request):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def actualizar_rol_json(request, id_rol):
     if request.method != 'POST':
@@ -1476,7 +1463,6 @@ def actualizar_rol_json(request, id_rol):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def desactivar_rol_json(request, id_rol):
     if request.method != 'POST':
@@ -1505,7 +1491,6 @@ def desactivar_rol_json(request, id_rol):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def activar_rol_json(request, id_rol):
     if request.method != 'POST':
@@ -1526,6 +1511,7 @@ def activar_rol_json(request, id_rol):
 
 
 @rol_requerido(['Administrador'])
+@ensure_csrf_cookie
 def configuracion_page(request):
     return render(request, 'core/configuracion.html')
 
@@ -1557,7 +1543,6 @@ def configuracion_json(request):
     return JsonResponse(data, json_dumps_params={'ensure_ascii': False})
 
 
-@csrf_exempt
 @rol_requerido(['Administrador'])
 def actualizar_configuracion_json(request):
     if request.method != 'POST':

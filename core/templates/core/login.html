@@ -1,6 +1,28 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  <script>
+    // Protección CSRF: agrega automáticamente el header X-CSRFToken (leído de la
+    // cookie csrftoken) a todas las peticiones fetch que modifican datos.
+    (function () {
+      function getCookie(name) {
+        const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+        return m ? decodeURIComponent(m.pop()) : '';
+      }
+      window.getCookie = getCookie;
+      const _fetch = window.fetch.bind(window);
+      const METODOS_SEGUROS = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
+      window.fetch = function (url, options) {
+        options = options || {};
+        const metodo = (options.method || 'GET').toUpperCase();
+        if (!METODOS_SEGUROS.includes(metodo)) {
+          options.headers = Object.assign({}, options.headers, { 'X-CSRFToken': getCookie('csrftoken') });
+          if (options.credentials === undefined) options.credentials = 'same-origin';
+        }
+        return _fetch(url, options);
+      };
+    })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login | Clínica Nubnest</title>
