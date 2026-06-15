@@ -53,6 +53,19 @@ def _client_ip(request):
     return request.META.get('REMOTE_ADDR', '') or 'desconocido'
 
 
+def _es_doctor(request):
+    """True si el rol de la sesión es Doctor."""
+    return request.session.get('rol', '') == 'Doctor'
+
+
+def _doctor_de_sesion(request):
+    """Devuelve el registro Doctores del usuario en sesión, o None."""
+    uid = request.session.get('usuario_id')
+    if not uid:
+        return None
+    return Doctores.objects.filter(id_usuario_id=uid).first()
+
+
 def sistema_login_required(view_func):
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
@@ -272,8 +285,20 @@ def pacientes_page(request):
 
 @rol_requerido(['Administrador', 'Recepción', 'Doctor'])
 def pacientes_json(request):
+    pacientes_qs = Pacientes.objects.all()
+
+    # Un Doctor solo ve los pacientes que han tenido cita con él.
+    if _es_doctor(request):
+        doctor = _doctor_de_sesion(request)
+        if not doctor:
+            return JsonResponse([], safe=False, json_dumps_params={'ensure_ascii': False})
+        ids_pacientes = Citas.objects.filter(
+            id_doctor=doctor
+        ).values_list('id_paciente_id', flat=True)
+        pacientes_qs = pacientes_qs.filter(id_paciente__in=ids_pacientes)
+
     data = list(
-        Pacientes.objects.values(
+        pacientes_qs.values(
             'id_paciente',
             'nombres',
             'apellidos',
@@ -403,6 +428,13 @@ def citas_json(request):
         'id_estado_cita',
         'id_motivo_consulta'
     )
+
+    # Un Doctor solo ve sus propias citas.
+    if _es_doctor(request):
+        doctor = _doctor_de_sesion(request)
+        if not doctor:
+            return JsonResponse([], safe=False, json_dumps_params={'ensure_ascii': False})
+        citas = citas.filter(id_doctor=doctor)
 
     eventos = []
 
@@ -709,11 +741,18 @@ def pagos_json(request):
 
 @rol_requerido(['Administrador', 'Recepción', 'Doctor'])
 def historial_citas_pagos_json(request):
-    citas = list(
-        Citas.objects.select_related(
-            'id_paciente', 'id_doctor__id_usuario', 'id_estado_cita'
-        ).order_by('-fecha_cita', '-id_cita')
-    )
+    citas_qs = Citas.objects.select_related(
+        'id_paciente', 'id_doctor__id_usuario', 'id_estado_cita'
+    ).order_by('-fecha_cita', '-id_cita')
+
+    # Un Doctor solo ve el historial de sus propias citas.
+    if _es_doctor(request):
+        doctor = _doctor_de_sesion(request)
+        if not doctor:
+            return JsonResponse([], safe=False, json_dumps_params={'ensure_ascii': False})
+        citas_qs = citas_qs.filter(id_doctor=doctor)
+
+    citas = list(citas_qs)
 
     cita_ids = [c.id_cita for c in citas]
     pagos_dict = {}
@@ -908,6 +947,13 @@ def notas_json(request):
         'id_cita',
         'id_doctor__id_usuario'
     ).order_by('-id_nota_clinica')
+
+    # Un Doctor solo ve sus propias notas.
+    if _es_doctor(request):
+        doctor = _doctor_de_sesion(request)
+        if not doctor:
+            return JsonResponse([], safe=False, json_dumps_params={'ensure_ascii': False})
+        notas = notas.filter(id_doctor=doctor)
 
     data = []
 
