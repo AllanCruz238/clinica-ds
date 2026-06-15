@@ -49,14 +49,21 @@ def rol_requerido(roles_permitidos):
     def decorator(view_func):
         @wraps(view_func)
         def wrapper(request, *args, **kwargs):
+            es_api = request.path.startswith('/api/')
+
             if not request.session.get('usuario_id'):
+                if es_api:
+                    return JsonResponse({'ok': False, 'error': 'No autenticado'}, status=401)
                 return redirect('/login/')
 
             rol = request.session.get('rol', '')
 
             if rol not in roles_permitidos:
-                request.session.flush()
-                return redirect('/login/?sin_acceso=1')
+                # No cerramos la sesión: el usuario sigue autenticado, solo no
+                # tiene permiso para este módulo.
+                if es_api:
+                    return JsonResponse({'ok': False, 'error': 'No autorizado'}, status=403)
+                return render(request, 'core/acceso_denegado.html', status=403)
 
             return view_func(request, *args, **kwargs)
         return wrapper
