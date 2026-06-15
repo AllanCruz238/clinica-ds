@@ -1,255 +1,173 @@
 from .common import *  # noqa: F401,F403
 
 
-@rol_requerido(['Administrador', 'Recepción', 'Doctor'])
 def _datos_reporte_general():
-    def fetchone_val(sql, params=None, default=0):
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, params or [])
-                row = cursor.fetchone()
-            if not row:
-                return default
-            return row[0] if row[0] is not None else default
-        except Exception as e:
-            print("ERROR REPORTE fetchone:", e, sql)
-            return default
+    """Reúne los indicadores del reporte general usando el ORM (portable en
+    PostgreSQL y otros motores; no usa funciones específicas de MySQL)."""
+    from django.db.models.functions import ExtractDay
 
-    def fetchall(sql, params=None):
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, params or [])
-                return cursor.fetchall()
-        except Exception as e:
-            print("ERROR REPORTE fetchall:", e, sql)
-            return []
+    def excluir_canceladas(qs):
+        return qs.exclude(
+            id_estado_cita__nombre_estado__iexact='cancelada'
+        ).exclude(
+            id_estado_cita__nombre_estado__iexact='cancelado'
+        )
 
-    hoy = timezone.localdate()
+    def fdate(v):
+        return str(v) if v else ''
+
+    def fhora(v):
+        return str(v)[:5] if v else ''
+
+    def nombre_pac(c):
+        if not c.id_paciente:
+            return ''
+        return f"{c.id_paciente.nombres or ''} {c.id_paciente.apellidos or ''}".strip()
+
+    def nombre_doc(c):
+        if c.id_doctor and c.id_doctor.id_usuario:
+            u = c.id_doctor.id_usuario
+            return f"{u.nombres or ''} {u.apellidos or ''}".strip()
+        return ''
+
+    hoy = date.today()
     ahora = timezone.now()
 
-    total_pacientes = int(fetchone_val("SELECT COUNT(*) FROM pacientes WHERE activo = 1"))
-    total_pacientes_general = int(fetchone_val("SELECT COUNT(*) FROM pacientes"))
-    total_usuarios = int(fetchone_val("SELECT COUNT(*) FROM usuarios"))
-    usuarios_activos = int(fetchone_val("SELECT COUNT(*) FROM usuarios WHERE activo = 1"))
-    total_doctores = int(fetchone_val("SELECT COUNT(*) FROM doctores"))
-    doctores_activos = int(fetchone_val("SELECT COUNT(*) FROM doctores WHERE activo = 1"))
-    total_citas = int(fetchone_val("SELECT COUNT(*) FROM citas"))
-    total_pagos = int(fetchone_val("SELECT COUNT(*) FROM pagos"))
+    total_pacientes = Pacientes.objects.filter(activo=1).count()
+    total_pacientes_general = Pacientes.objects.count()
+    total_usuarios = Usuarios.objects.count()
+    usuarios_activos = Usuarios.objects.filter(activo=1).count()
+    total_doctores = Doctores.objects.count()
+    doctores_activos = Doctores.objects.filter(activo=1).count()
+    total_citas = Citas.objects.count()
+    total_pagos = Pagos.objects.count()
 
-    citas_hoy = int(fetchone_val("""
-        SELECT COUNT(*)
-        FROM citas c
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita = CURDATE()
-          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
-    """))
+    citas_hoy = excluir_canceladas(Citas.objects.filter(fecha_cita=hoy)).count()
+    citas_proximas_total = excluir_canceladas(Citas.objects.filter(fecha_cita__gte=hoy)).count()
 
-    citas_proximas_total = int(fetchone_val("""
-        SELECT COUNT(*)
-        FROM citas c
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita >= CURDATE()
-          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
-    """))
+    ingresos_totales = float(Pagos.objects.aggregate(t=Sum('monto'))['t'] or 0)
+    pagos_del_mes = float(
+        Pagos.objects.filter(
+            fecha_pago__isnull=False, fecha_pago__year=hoy.year, fecha_pago__month=hoy.month
+        ).aggregate(t=Sum('monto'))['t'] or 0
+    )
+    ingresos_semanales = float(
+        Pagos.objects.filter(
+            fecha_pago__isnull=False, fecha_pago__gte=ahora - timedelta(days=7)
+        ).aggregate(t=Sum('monto'))['t'] or 0
+    )
 
-    ingresos_totales = float(fetchone_val("SELECT COALESCE(SUM(monto),0) FROM pagos", default=0) or 0)
-    pagos_del_mes = float(fetchone_val("""
-        SELECT COALESCE(SUM(monto),0)
-        FROM pagos
-        WHERE fecha_pago IS NOT NULL
-          AND MONTH(fecha_pago) = MONTH(CURDATE())
-          AND YEAR(fecha_pago) = YEAR(CURDATE())
-    """, default=0) or 0)
-    ingresos_semanales = float(fetchone_val("""
-        SELECT COALESCE(SUM(monto),0)
-        FROM pagos
-        WHERE fecha_pago IS NOT NULL
-          AND fecha_pago >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-    """, default=0) or 0)
+    promedio_pago = round(ingresos_totales / total_pagos, 2) if total_pagos else 0
 
-    promedio_pago = round((ingresos_totales / total_pagos), 2) if total_pagos else 0
-    citas_futuras_pendientes_pago = int(fetchone_val("""
-        SELECT COUNT(*)
-        FROM citas c
-        LEFT JOIN pagos p ON c.id_cita = p.id_cita
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE c.fecha_cita >= CURDATE()
-          AND p.id_pago IS NULL
-          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
-    """))
+    citas_con_pago_ids = list(
+        Pagos.objects.exclude(id_cita__isnull=True).values_list('id_cita_id', flat=True)
+    )
+    citas_futuras_pendientes_pago = excluir_canceladas(
+        Citas.objects.filter(fecha_cita__gte=hoy)
+    ).exclude(id_cita__in=citas_con_pago_ids).count()
     ingresos_potenciales = round(promedio_pago * citas_futuras_pendientes_pago, 2)
 
-    canceladas = int(fetchone_val("""
-        SELECT COUNT(*)
-        FROM citas c
-        INNER JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE LOWER(e.nombre_estado) IN ('cancelada', 'cancelado')
-    """))
+    canceladas = Citas.objects.filter(
+        id_estado_cita__nombre_estado__iexact='cancelada'
+    ).count() + Citas.objects.filter(
+        id_estado_cita__nombre_estado__iexact='cancelado'
+    ).count()
     tasa_cancelaciones = round((canceladas / total_citas) * 100, 2) if total_citas else 0
 
-    citas_por_estado = []
-    for estado, total in fetchall("""
-        SELECT COALESCE(e.nombre_estado, 'Sin estado') AS estado, COUNT(c.id_cita) AS total
-        FROM citas c
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        GROUP BY estado
-        ORDER BY total DESC
-    """):
-        citas_por_estado.append({'estado': estado, 'total': int(total or 0)})
+    citas_por_estado = [
+        {'estado': r['id_estado_cita__nombre_estado'] or 'Sin estado', 'total': int(r['total'] or 0)}
+        for r in Citas.objects.values('id_estado_cita__nombre_estado')
+        .annotate(total=Count('id_cita')).order_by('-total')
+    ]
 
-    pacientes_frecuentes = []
-    for id_paciente, nombres, apellidos, total in fetchall("""
-        SELECT p.id_paciente, p.nombres, p.apellidos, COUNT(c.id_cita) AS total
-        FROM citas c
-        INNER JOIN pacientes p ON c.id_paciente = p.id_paciente
-        GROUP BY p.id_paciente, p.nombres, p.apellidos
-        ORDER BY total DESC
-        LIMIT 10
-    """):
-        pacientes_frecuentes.append({
-            'id_paciente': id_paciente,
-            'paciente': f"{nombres or ''} {apellidos or ''}".strip(),
-            'total_citas': int(total or 0)
-        })
+    pacientes_frecuentes = [
+        {
+            'id_paciente': r['id_paciente'],
+            'paciente': f"{r['id_paciente__nombres'] or ''} {r['id_paciente__apellidos'] or ''}".strip(),
+            'total_citas': int(r['total'] or 0),
+        }
+        for r in Citas.objects.filter(id_paciente__isnull=False)
+        .values('id_paciente', 'id_paciente__nombres', 'id_paciente__apellidos')
+        .annotate(total=Count('id_cita')).order_by('-total')[:10]
+    ]
 
-    cumpleanios_mes = []
-    for id_paciente, nombres, apellidos, fecha_nacimiento in fetchall("""
-        SELECT id_paciente, nombres, apellidos, fecha_nacimiento
-        FROM pacientes
-        WHERE activo = 1
-          AND fecha_nacimiento IS NOT NULL
-          AND MONTH(fecha_nacimiento) = MONTH(CURDATE())
-        ORDER BY DAY(fecha_nacimiento), nombres
-    """):
-        cumpleanios_mes.append({
-            'id_paciente': id_paciente,
-            'paciente': f"{nombres or ''} {apellidos or ''}".strip(),
-            'fecha_nacimiento': str(fecha_nacimiento) if fecha_nacimiento else ''
-        })
+    cumpleanios_mes = [
+        {
+            'id_paciente': p.id_paciente,
+            'paciente': f"{p.nombres or ''} {p.apellidos or ''}".strip(),
+            'fecha_nacimiento': str(p.fecha_nacimiento) if p.fecha_nacimiento else '',
+        }
+        for p in Pacientes.objects.filter(
+            activo=1, fecha_nacimiento__isnull=False, fecha_nacimiento__month=hoy.month
+        ).annotate(dia=ExtractDay('fecha_nacimiento')).order_by('dia', 'nombres')
+    ]
 
-    ingresos_por_tipo = []
-    for tipo, cantidad, total in fetchall("""
-        SELECT COALESCE(t.nombre_tipo_pago, 'Sin tipo') AS tipo, COUNT(p.id_pago) AS cantidad, COALESCE(SUM(p.monto),0) AS total
-        FROM pagos p
-        LEFT JOIN tipos_pago t ON p.id_tipo_pago = t.id_tipo_pago
-        GROUP BY tipo
-        ORDER BY total DESC
-    """):
-        ingresos_por_tipo.append({
-            'tipo_pago': tipo,
-            'cantidad': int(cantidad or 0),
-            'total': float(total or 0)
-        })
+    ingresos_por_tipo = [
+        {
+            'tipo_pago': r['id_tipo_pago__nombre_tipo_pago'] or 'Sin tipo',
+            'cantidad': int(r['cantidad'] or 0),
+            'total': float(r['total'] or 0),
+        }
+        for r in Pagos.objects.values('id_tipo_pago__nombre_tipo_pago')
+        .annotate(cantidad=Count('id_pago'), total=Sum('monto')).order_by('-total')
+    ]
 
     citas_proximas = []
-    for row in fetchall("""
-        SELECT
-            c.id_cita,
-            p.nombres,
-            p.apellidos,
-            ud.nombres,
-            ud.apellidos,
-            c.fecha_cita,
-            c.hora_inicio,
-            c.hora_fin,
-            COALESCE(e.nombre_estado, 'Sin estado') AS estado,
-            COALESCE(c.modalidad, '') AS modalidad,
-            COALESCE(m.nombre_motivo, '') AS motivo,
-            COALESCE(c.razon_consulta_detalle, '') AS detalle
-        FROM citas c
-        LEFT JOIN pacientes p ON c.id_paciente = p.id_paciente
-        LEFT JOIN doctores d ON c.id_doctor = d.id_doctor
-        LEFT JOIN usuarios ud ON d.id_usuario = ud.id_usuario
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        LEFT JOIN motivos_consulta m ON c.id_motivo_consulta = m.id_motivo_consulta
-        WHERE c.fecha_cita >= CURDATE()
-          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
-        ORDER BY c.fecha_cita ASC, c.hora_inicio ASC
-        LIMIT 30
-    """):
-        (id_cita, pn, pa, dn, da, fecha_cita, hora_inicio, hora_fin, estado, modalidad, motivo, detalle) = row
+    for c in excluir_canceladas(
+        Citas.objects.filter(fecha_cita__gte=hoy)
+    ).select_related(
+        'id_paciente', 'id_doctor__id_usuario', 'id_estado_cita', 'id_motivo_consulta'
+    ).order_by('fecha_cita', 'hora_inicio')[:30]:
         citas_proximas.append({
-            'id_cita': id_cita,
-            'paciente': f"{pn or ''} {pa or ''}".strip(),
-            'doctor': f"{dn or ''} {da or ''}".strip(),
-            'fecha_cita': str(fecha_cita) if fecha_cita else '',
-            'hora_inicio': str(hora_inicio)[:5] if hora_inicio else '',
-            'hora_fin': str(hora_fin)[:5] if hora_fin else '',
-            'estado': estado,
-            'modalidad': modalidad,
-            'motivo': motivo,
-            'detalle': detalle
+            'id_cita': c.id_cita,
+            'paciente': nombre_pac(c),
+            'doctor': nombre_doc(c),
+            'fecha_cita': fdate(c.fecha_cita),
+            'hora_inicio': fhora(c.hora_inicio),
+            'hora_fin': fhora(c.hora_fin),
+            'estado': c.id_estado_cita.nombre_estado if c.id_estado_cita else 'Sin estado',
+            'modalidad': c.modalidad or '',
+            'motivo': c.id_motivo_consulta.nombre_motivo if c.id_motivo_consulta else '',
+            'detalle': c.razon_consulta_detalle or '',
         })
 
     sesiones_pendientes = []
-    for row in fetchall("""
-        SELECT
-            c.id_cita,
-            p.nombres,
-            p.apellidos,
-            ud.nombres,
-            ud.apellidos,
-            c.fecha_cita,
-            c.hora_inicio,
-            COALESCE(e.nombre_estado, 'Sin estado') AS estado
-        FROM citas c
-        LEFT JOIN pagos pg ON c.id_cita = pg.id_cita
-        LEFT JOIN pacientes p ON c.id_paciente = p.id_paciente
-        LEFT JOIN doctores d ON c.id_doctor = d.id_doctor
-        LEFT JOIN usuarios ud ON d.id_usuario = ud.id_usuario
-        LEFT JOIN estados_cita e ON c.id_estado_cita = e.id_estado_cita
-        WHERE pg.id_pago IS NULL
-          AND (e.nombre_estado IS NULL OR LOWER(e.nombre_estado) NOT IN ('cancelada', 'cancelado'))
-        ORDER BY c.fecha_cita DESC, c.hora_inicio DESC
-        LIMIT 30
-    """):
-        (id_cita, pn, pa, dn, da, fecha_cita, hora_inicio, estado) = row
+    for c in excluir_canceladas(Citas.objects.all()).exclude(
+        id_cita__in=citas_con_pago_ids
+    ).select_related(
+        'id_paciente', 'id_doctor__id_usuario', 'id_estado_cita'
+    ).order_by('-fecha_cita', '-hora_inicio')[:30]:
         sesiones_pendientes.append({
-            'id_cita': id_cita,
-            'paciente': f"{pn or ''} {pa or ''}".strip(),
-            'doctor': f"{dn or ''} {da or ''}".strip(),
-            'fecha_cita': str(fecha_cita) if fecha_cita else '',
-            'hora_inicio': str(hora_inicio)[:5] if hora_inicio else '',
-            'estado': estado
+            'id_cita': c.id_cita,
+            'paciente': nombre_pac(c),
+            'doctor': nombre_doc(c),
+            'fecha_cita': fdate(c.fecha_cita),
+            'hora_inicio': fhora(c.hora_inicio),
+            'estado': c.id_estado_cita.nombre_estado if c.id_estado_cita else 'Sin estado',
         })
 
     usuarios_resumen = []
-    for row in fetchall("""
-        SELECT u.id_usuario, u.username, u.nombres, u.apellidos, COALESCE(r.nombre_rol, '') AS rol, u.correo, u.activo
-        FROM usuarios u
-        LEFT JOIN roles r ON u.id_rol = r.id_rol
-        ORDER BY u.id_usuario DESC
-        LIMIT 50
-    """):
-        id_usuario, username, nombres, apellidos, rol, correo, activo = row
+    for u in Usuarios.objects.select_related('id_rol').order_by('-id_usuario')[:50]:
         usuarios_resumen.append({
-            'id_usuario': id_usuario,
-            'usuario': username or '',
-            'nombre': f"{nombres or ''} {apellidos or ''}".strip(),
-            'rol': rol,
-            'correo': correo or '',
-            'activo': int(activo or 0)
+            'id_usuario': u.id_usuario,
+            'usuario': u.username or '',
+            'nombre': f"{u.nombres or ''} {u.apellidos or ''}".strip(),
+            'rol': u.id_rol.nombre_rol if u.id_rol else '',
+            'correo': u.correo or '',
+            'activo': int(u.activo or 0),
         })
 
     doctores_resumen = []
-    for row in fetchall("""
-        SELECT d.id_doctor, u.nombres, u.apellidos, COALESCE(e.nombre_especialidad, '') AS especialidad,
-               u.correo, u.telefono, d.numero_colegiado, d.activo
-        FROM doctores d
-        LEFT JOIN usuarios u ON d.id_usuario = u.id_usuario
-        LEFT JOIN especialidades e ON d.id_especialidad = e.id_especialidad
-        ORDER BY d.id_doctor DESC
-        LIMIT 50
-    """):
-        id_doctor, nombres, apellidos, especialidad, correo, telefono, colegiado, activo = row
+    for d in Doctores.objects.select_related('id_usuario', 'id_especialidad').order_by('-id_doctor')[:50]:
+        u = d.id_usuario
         doctores_resumen.append({
-            'id_doctor': id_doctor,
-            'doctor': f"{nombres or ''} {apellidos or ''}".strip(),
-            'especialidad': especialidad,
-            'correo': correo or '',
-            'telefono': telefono or '',
-            'colegiado': colegiado or '',
-            'activo': int(activo or 0)
+            'id_doctor': d.id_doctor,
+            'doctor': f"{(u.nombres if u else '') or ''} {(u.apellidos if u else '') or ''}".strip(),
+            'especialidad': d.id_especialidad.nombre_especialidad if d.id_especialidad else '',
+            'correo': (u.correo if u else '') or '',
+            'telefono': (u.telefono if u else '') or '',
+            'colegiado': d.numero_colegiado or '',
+            'activo': int(d.activo or 0),
         })
 
     return {
@@ -282,7 +200,21 @@ def _datos_reporte_general():
     }
 
 
-@rol_requerido(['Administrador', 'Recepción', 'Doctor'])
+@rol_requerido(['Administrador'])
+def reportes_page(request):
+    return render(request, 'core/reportes.html')
+
+
+@rol_requerido(['Administrador'])
+def reportes_json(request):
+    try:
+        return JsonResponse(_datos_reporte_general(), json_dumps_params={'ensure_ascii': False})
+    except Exception:
+        logger.exception('Error generando el reporte general')
+        return JsonResponse({'ok': False, 'error': 'Error interno'}, status=500)
+
+
+@rol_requerido(['Administrador'])
 def generar_word_reporte_general(request):
     data = _datos_reporte_general()
 

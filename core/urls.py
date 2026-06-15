@@ -64,12 +64,12 @@ urlpatterns = [
     path('api/usuarios/<int:id_usuario>/activar/', views.activar_usuario_json, name='activar_usuario_json'),
 
     # Roles
-    # path('roles/', views.roles_page, name='roles'),
-    # path('api/roles/', views.roles_json, name='roles_json'),
-    # path('api/roles/crear/', views.crear_rol_json, name='crear_rol_json'),
-    # path('api/roles/<int:id_rol>/actualizar/', views.actualizar_rol_json, name='actualizar_rol_json'),
-    # path('api/roles/<int:id_rol>/desactivar/', views.desactivar_rol_json, name='desactivar_rol_json'),
-    # path('api/roles/<int:id_rol>/activar/', views.activar_rol_json, name='activar_rol_json'),
+    path('roles/', views.roles_page, name='roles'),
+    path('api/roles/', views.roles_json, name='roles_json'),
+    path('api/roles/crear/', views.crear_rol_json, name='crear_rol_json'),
+    path('api/roles/editar/<int:id_rol>/', views.actualizar_rol_json, name='actualizar_rol_json'),
+    path('api/roles/desactivar/<int:id_rol>/', views.desactivar_rol_json, name='desactivar_rol_json'),
+    path('api/roles/activar/<int:id_rol>/', views.activar_rol_json, name='activar_rol_json'),
 
     # Configuración
     path('configuracion/', views.configuracion_page, name='configuracion'),
@@ -77,9 +77,9 @@ urlpatterns = [
     path('api/configuracion/actualizar/', views.actualizar_configuracion_json, name='actualizar_configuracion_json'),
 
     # Reportes
-    # path('reportes/', views.reportes_page, name='reportes'),
-    # path('api/reportes/', views.reportes_json, name='reportes_json'),
-    # path('reportes/word/', views.generar_word_reporte_general, name='generar_word_reporte_general'),
+    path('reportes/', views.reportes_page, name='reportes'),
+    path('api/reportes/', views.reportes_json, name='reportes_json'),
+    path('reportes/word/', views.generar_word_reporte_general, name='generar_word_reporte_general'),
 
     # Recordatorios
     path('recordatorios/generar/', views.generar_recordatorios_automaticos, name='generar_recordatorios_automaticos'),
