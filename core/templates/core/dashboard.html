@@ -467,13 +467,16 @@
     boton.textContent = 'Procesando...';
 
     try {
+      const esWhatsApp = url.includes('/recordatorios/whatsapp/');
+      // El listado de WhatsApp solo consulta (GET); generar/enviar correos
+      // modifican estado, por lo que usan POST (con CSRF automático).
+      const metodo = esWhatsApp ? 'GET' : 'POST';
       const response = await fetch(url, {
-        method: 'GET',
+        method: metodo,
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
         credentials: 'same-origin'
       });
       const textoRespuesta = await response.text();
-      const esWhatsApp = url.includes('/recordatorios/whatsapp/');
       const mensaje = esWhatsApp ? htmlRecordatoriosWhatsApp(textoRespuesta) : limpiarTextoRespuesta(textoRespuesta);
       if (!response.ok) throw new Error(esWhatsApp ? limpiarTextoRespuesta(textoRespuesta) : (mensaje || 'No se pudo ejecutar la acción.'));
       abrirModalRecordatorio(titulo, mensaje, esWhatsApp);

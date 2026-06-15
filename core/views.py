@@ -12,6 +12,7 @@ from django.http import JsonResponse, HttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.http import require_POST
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -2511,6 +2512,7 @@ def _citas_recordatorio_qs():
 
 
 @rol_requerido(['Administrador', 'Recepción'])
+@require_POST
 def enviar_recordatorios_correo(request):
     import traceback as _traceback
     try:
@@ -2601,6 +2603,7 @@ def limpiar_numero_whatsapp(numero):
     return numero
 
 
+@ensure_csrf_cookie
 @rol_requerido(['Administrador', 'Recepción'])
 def listar_recordatorios_whatsapp(request):
     """
@@ -2640,6 +2643,8 @@ def listar_recordatorios_whatsapp(request):
             .fecha { color:#93b5d9; font-size:14px; margin-bottom:8px; }
             .mensaje { background:#0a1628; padding:12px; border-radius:10px; margin-bottom:12px; white-space:pre-wrap; line-height:1.5; }
             .btn { display:inline-block; background:#22c55e; color:#04110a; text-decoration:none; padding:10px 14px; border-radius:10px; font-weight:bold; margin-right:8px; }
+            button.btn { border:none; cursor:pointer; font-size:14px; font-family:inherit; }
+            button.btn:disabled { opacity:.6; cursor:default; }
             .btn.secondary { background:#38bdf8; color:#06111f; }
             .empty { background:#0f1e36; border:1px solid rgba(45,212,191,.22); padding:18px; border-radius:14px; color:#cfe3ff; }
             hr { border:0; border-top:1px solid rgba(45,212,191,.18); margin:18px 0; }
@@ -2663,7 +2668,7 @@ def listar_recordatorios_whatsapp(request):
                 <div class="fecha">Fecha programada: {fecha_programada}</div>
                 <div class="mensaje">{mensaje}</div>
                 <a class="btn" target="_blank" href="{wa_url}">Abrir WhatsApp</a>
-                <a class="btn secondary" target="_blank" href="/recordatorios/whatsapp/{id_recordatorio}/abrir/">Abrir y marcar enviado</a>
+                <button type="button" class="btn secondary js-wa-abrir" data-url="/recordatorios/whatsapp/{id_recordatorio}/abrir/">Abrir y marcar enviado</button>
             </div>
             """
             total_mostrados += 1
@@ -2683,7 +2688,7 @@ def listar_recordatorios_whatsapp(request):
             <div class="fecha">Cita: {cita.fecha_cita} {hora_inicio.strftime('%H:%M')}</div>
             <div class="mensaje">{mensaje}</div>
             <a class="btn" target="_blank" href="{wa_url}">Enviar WhatsApp manual</a>
-            <a class="btn secondary" target="_blank" href="/recordatorios/whatsapp/cita/{cita.id_cita}/abrir/">Abrir y registrar</a>
+            <button type="button" class="btn secondary js-wa-abrir" data-url="/recordatorios/whatsapp/cita/{cita.id_cita}/abrir/">Abrir y registrar</button>
         </div>
         """
         total_mostrados += 1
@@ -2692,6 +2697,34 @@ def listar_recordatorios_whatsapp(request):
         html += '<div class="empty">No hay citas de hoy o mañana con teléfono registrado.</div>'
 
     html += """
+        <script>
+            function getCookie(name) {
+                const m = document.cookie.match('(^|;)\\\\s*' + name + '\\\\s*=\\\\s*([^;]+)');
+                return m ? decodeURIComponent(m.pop()) : '';
+            }
+            document.querySelectorAll('.js-wa-abrir').forEach(function (btn) {
+                btn.addEventListener('click', async function () {
+                    btn.disabled = true;
+                    try {
+                        const r = await fetch(btn.dataset.url, {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                            credentials: 'same-origin'
+                        });
+                        const data = await r.json();
+                        if (data && data.ok && data.url) {
+                            window.open(data.url, '_blank');
+                        } else {
+                            alert((data && data.error) || 'No se pudo abrir WhatsApp.');
+                        }
+                    } catch (e) {
+                        alert('No se pudo abrir WhatsApp.');
+                    } finally {
+                        btn.disabled = false;
+                    }
+                });
+            });
+        </script>
     </body>
     </html>
     """
@@ -2700,6 +2733,7 @@ def listar_recordatorios_whatsapp(request):
 
 
 @rol_requerido(['Administrador', 'Recepción'])
+@require_POST
 def abrir_recordatorio_whatsapp(request, id_recordatorio):
     try:
         with connection.cursor() as cursor:
@@ -2712,7 +2746,7 @@ def abrir_recordatorio_whatsapp(request, id_recordatorio):
             recordatorio = cursor.fetchone()
 
         if not recordatorio:
-            return HttpResponse('Recordatorio no encontrado', status=404)
+            return JsonResponse({'ok': False, 'error': 'Recordatorio no encontrado'}, status=404)
 
         destinatario, mensaje = recordatorio
         numero_limpio = limpiar_numero_whatsapp(destinatario)
@@ -2726,12 +2760,14 @@ def abrir_recordatorio_whatsapp(request, id_recordatorio):
                 WHERE id_recordatorio = %s
             """, ['enviado', id_recordatorio])
 
-        return redirect(url_whatsapp)
-    except Exception as e:
-        return HttpResponse(f"Error abriendo WhatsApp: {str(e)}", status=500)
+        return JsonResponse({'ok': True, 'url': url_whatsapp})
+    except Exception:
+        logger.exception('Error abriendo recordatorio de WhatsApp')
+        return JsonResponse({'ok': False, 'error': 'Error interno'}, status=500)
 
 
 @rol_requerido(['Administrador', 'Recepción'])
+@require_POST
 def abrir_whatsapp_cita(request, id_cita):
     cita = get_object_or_404(
         Citas.objects.select_related('id_paciente', 'id_estado_cita'),
@@ -2739,7 +2775,10 @@ def abrir_whatsapp_cita(request, id_cita):
     )
 
     if not cita.id_paciente or not cita.id_paciente.telefono:
-        return HttpResponse('La cita no tiene teléfono de paciente registrado.', status=400)
+        return JsonResponse(
+            {'ok': False, 'error': 'La cita no tiene teléfono de paciente registrado.'},
+            status=400,
+        )
 
     mensaje = _mensaje_cita_recordatorio(cita)
     numero_limpio = limpiar_numero_whatsapp(cita.id_paciente.telefono)
@@ -2767,13 +2806,14 @@ def abrir_whatsapp_cita(request, id_cita):
                 datetime.now(),
                 'enviado'
             ])
-    except Exception as e:
-        print('NO SE PUDO REGISTRAR WHATSAPP MANUAL:', e)
+    except Exception:
+        logger.exception('No se pudo registrar el WhatsApp manual')
 
-    return redirect(url_whatsapp)
+    return JsonResponse({'ok': True, 'url': url_whatsapp})
 
 
 @rol_requerido(['Administrador', 'Recepción'])
+@require_POST
 def generar_recordatorios_automaticos(request):
     """
     Genera recordatorios manuales para citas de hoy y mañana.
