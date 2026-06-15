@@ -193,6 +193,7 @@ def insert_tipo_pago(nombre):
 def main():
     # Roles principales para el sistema.
     insert_role("Administrador", "Acceso completo al sistema.")
+    insert_role("Recepción", "Acceso operativo a pacientes, citas, pagos y recordatorios.")
     insert_role("Doctor", "Acceso a módulos clínicos y gestión de sus citas/notas.")
     insert_role("Paciente", "Usuario paciente para acceso limitado o vinculación futura.")
 
