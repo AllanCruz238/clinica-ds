@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime, timedelta, time
 from urllib.parse import quote
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.cache import cache
 from django.db.models import Sum, Count
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
@@ -34,6 +35,20 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Control básico de fuerza bruta en el login.
+MAX_INTENTOS_LOGIN = 5
+BLOQUEO_LOGIN_SEGUNDOS = 15 * 60
+# Hash "señuelo" para igualar el tiempo de respuesta cuando el usuario no existe
+# (evita enumeración de usuarios por diferencia de tiempos).
+_DUMMY_PASSWORD_HASH = make_password('timing-dummy-password')
+
+
+def _client_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '') or 'desconocido'
 
 
 def sistema_login_required(view_func):
@@ -87,16 +102,41 @@ def login_json(request):
         username = body.get('username', '').strip()
         password = body.get('password', '').strip()
 
+        ip = _client_ip(request)
+        cache_key = f"login_intentos:{ip}:{username.lower()}"
+        intentos = cache.get(cache_key, 0)
+
+        if intentos >= MAX_INTENTOS_LOGIN:
+            logger.warning('Login bloqueado por fuerza bruta: usuario "%s" desde %s', username, ip)
+            return JsonResponse(
+                {'ok': False, 'error': 'Demasiados intentos fallidos. Intenta de nuevo en unos minutos.'},
+                status=429,
+            )
+
         usuario = Usuarios.objects.select_related('id_rol').filter(
             username=username,
             activo=1
         ).first()
 
-        if not usuario:
-            return JsonResponse({'ok': False, 'error': 'Usuario no encontrado'}, status=401)
+        if usuario:
+            credenciales_validas = check_password(password, usuario.password_hash)
+        else:
+            # Ejecutamos un check_password "señuelo" para que el tiempo de
+            # respuesta sea similar al de un usuario existente.
+            check_password(password, _DUMMY_PASSWORD_HASH)
+            credenciales_validas = False
 
-        if not check_password(password, usuario.password_hash):
-            return JsonResponse({'ok': False, 'error': 'Contraseña incorrecta'}, status=401)
+        if not credenciales_validas:
+            cache.set(cache_key, intentos + 1, BLOQUEO_LOGIN_SEGUNDOS)
+            logger.warning('Intento de login fallido para "%s" desde %s', username, ip)
+            # Mismo mensaje para usuario inexistente y contraseña incorrecta.
+            return JsonResponse(
+                {'ok': False, 'error': 'Usuario o contraseña incorrectos'},
+                status=401,
+            )
+
+        # Login correcto: limpiamos el contador de intentos.
+        cache.delete(cache_key)
 
         usuario.ultimo_acceso = timezone.now()
         usuario.save()
@@ -112,8 +152,9 @@ def login_json(request):
             'redirect': '/dashboard/'
         }, json_dumps_params={'ensure_ascii': False})
 
-    except Exception as e:
-        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+    except Exception:
+        logger.exception('Error en login_json')
+        return JsonResponse({'ok': False, 'error': 'Error interno'}, status=400)
 
 
 def logout_view(request):
