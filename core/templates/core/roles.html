@@ -198,12 +198,15 @@
       <a href="/dashboard/">Dashboard</a>
       <a href="/pacientes/">Pacientes</a>
       <a href="/citas/">Citas</a>
-      <a href="/pagos/">Pagos</a>
-      <a href="/notas/">Notas clínicas</a>
+      {% if rol == 'Administrador' or rol == 'Recepción' %}<a href="/pagos/">Pagos</a>{% endif %}
+      {% if rol == 'Administrador' or rol == 'Doctor' %}<a href="/notas/">Notas clínicas</a>{% endif %}
+      {% if rol == 'Administrador' %}
       <a href="/doctores/">Doctores</a>
       <a href="/usuarios/">Usuarios</a>
       <a href="/roles/" class="active">Roles</a>
+      <a href="/reportes/">Reportes</a>
       <a href="/configuracion/">Configuración</a>
+      {% endif %}
       <a href="/logout/" style="margin-top:30px;">Cerrar sesión</a>
     </aside>
 
