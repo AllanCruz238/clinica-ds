@@ -1,6 +1,21 @@
 from .common import *  # noqa: F401,F403
 
 
+def _validar_datos_paciente(body):
+    """Devuelve un mensaje de error si los datos del paciente son inválidos, o None."""
+    correo = (body.get('correo') or '').strip()
+    if correo and not _email_valido(correo):
+        return 'El correo electrónico no es válido.'
+    fn = body.get('fecha_nacimiento')
+    if fn:
+        try:
+            if date.fromisoformat(str(fn)) > date.today():
+                return 'La fecha de nacimiento no puede ser futura.'
+        except ValueError:
+            return 'La fecha de nacimiento no es válida.'
+    return None
+
+
 @rol_requerido(['Administrador', 'Recepción', 'Doctor'])
 @ensure_csrf_cookie
 def pacientes_page(request):
@@ -63,6 +78,10 @@ def crear_paciente_json(request):
     try:
         body = json.loads(request.body)
 
+        error_val = _validar_datos_paciente(body)
+        if error_val:
+            return JsonResponse({'ok': False, 'error': error_val}, status=400)
+
         nuevo_paciente = Pacientes.objects.create(
             nombres=body.get('nombres', ''),
             apellidos=body.get('apellidos', ''),
@@ -100,6 +119,10 @@ def actualizar_paciente_json(request, id_paciente):
 
     try:
         body = json.loads(request.body)
+
+        error_val = _validar_datos_paciente(body)
+        if error_val:
+            return JsonResponse({'ok': False, 'error': error_val}, status=400)
 
         paciente = Pacientes.objects.get(id_paciente=id_paciente)
 

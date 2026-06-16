@@ -44,6 +44,7 @@ __all__ = [
     'Q',
     'escape',
     '_aplicar_paginacion',
+    '_email_valido',
     'Auditoria',
     'BLOQUEO_LOGIN_SEGUNDOS',
     'Citas',
@@ -120,6 +121,11 @@ BLOQUEO_LOGIN_SEGUNDOS = 15 * 60
 
 
 _DUMMY_PASSWORD_HASH = make_password('timing-dummy-password')
+
+
+def _email_valido(correo):
+    """Validación básica de formato de correo."""
+    return bool(re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', correo or ''))
 
 
 def _aplicar_paginacion(request, data_list):

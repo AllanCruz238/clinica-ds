@@ -172,9 +172,15 @@ def crear_cita_json(request):
                     'error': 'Las citas en fechas u horas pasadas solo pueden guardarse con estado Cancelada o No asistió.'
                 }, status=400)
 
+        hora_fin_val = _hora_como_time(body.get('hora_fin'))
+        if hora_fin_val <= hora_inicio_val:
+            return JsonResponse({
+                'ok': False,
+                'error': 'La hora de fin debe ser posterior a la hora de inicio.'
+            }, status=400)
+
         # Evitar choques con otra cita del mismo doctor (salvo si esta es Cancelada).
         if estado.nombre_estado.lower() not in {'cancelada', 'cancelado'}:
-            hora_fin_val = _hora_como_time(body.get('hora_fin'))
             if _hay_choque_citas(doctor, fecha_cita_val, hora_inicio_val, hora_fin_val):
                 return JsonResponse({
                     'ok': False,
@@ -247,9 +253,15 @@ def editar_cita_json(request, id_cita):
 
         doctor_edit = Doctores.objects.get(id_doctor=body['id_doctor'])
 
+        hora_fin_val = _hora_como_time(body.get('hora_fin'))
+        if hora_fin_val <= hora_inicio_val:
+            return JsonResponse({
+                'ok': False,
+                'error': 'La hora de fin debe ser posterior a la hora de inicio.'
+            }, status=400)
+
         # Evitar choques con otra cita del mismo doctor (salvo si esta es Cancelada).
         if nuevo_estado.nombre_estado.lower() not in {'cancelada', 'cancelado'}:
-            hora_fin_val = _hora_como_time(body.get('hora_fin'))
             if _hay_choque_citas(doctor_edit, fecha_cita_val, hora_inicio_val, hora_fin_val, excluir_id=cita.id_cita):
                 return JsonResponse({
                     'ok': False,

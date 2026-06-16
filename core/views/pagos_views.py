@@ -162,12 +162,19 @@ def crear_pago_json(request):
         if body.get('id_cita'):
             cita = Citas.objects.get(id_cita=body['id_cita'])
 
+        try:
+            monto_val = float(body.get('monto', 0))
+        except (TypeError, ValueError):
+            monto_val = 0
+        if monto_val <= 0:
+            return JsonResponse({'ok': False, 'error': 'El monto debe ser mayor a 0.'}, status=400)
+
         ahora = timezone.now()
         nuevo_pago = Pagos.objects.create(
             id_paciente=paciente,
             id_cita=cita,
             id_tipo_pago=tipo_pago,
-            monto=body.get('monto', 0),
+            monto=monto_val,
             fecha_pago=ahora,
             referencia_pago=body.get('referencia_pago', ''),
             observaciones=body.get('observaciones', ''),
@@ -214,7 +221,14 @@ def actualizar_pago_json(request, id_pago):
         if body.get('id_cita'):
             pago.id_cita = Citas.objects.get(id_cita=body['id_cita'])
 
-        pago.monto = body.get('monto', 0)
+        try:
+            monto_val = float(body.get('monto', 0))
+        except (TypeError, ValueError):
+            monto_val = 0
+        if monto_val <= 0:
+            return JsonResponse({'ok': False, 'error': 'El monto debe ser mayor a 0.'}, status=400)
+
+        pago.monto = monto_val
         pago.referencia_pago = body.get('referencia_pago', '').strip()
         pago.observaciones = body.get('observaciones', '').strip()
         pago.save()
