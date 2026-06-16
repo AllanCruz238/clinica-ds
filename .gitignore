@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Variables de entorno / secretos
+.env
+
+# Base de datos local (producción usa PostgreSQL)
+db.sqlite3
+*.sqlite3
+
+# Archivos estáticos recolectados
+staticfiles/
+
+# Configuración local de Claude
+.claude/
+
+# Artefactos varios
+python
