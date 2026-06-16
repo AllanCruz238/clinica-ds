@@ -150,6 +150,14 @@ class Pagos(models.Model):
     fecha_pago = models.DateTimeField(blank=True, null=True)
     referencia_pago = models.CharField(max_length=100, blank=True, null=True)
     observaciones = models.TextField(blank=True, null=True)
+    # Trazabilidad: en vez de borrar físicamente, se anula lógicamente.
+    estado = models.CharField(max_length=20, default='pagado', blank=True, null=True)
+    registrado_por = models.ForeignKey(
+        'Usuarios', models.DO_NOTHING, db_column='registrado_por',
+        blank=True, null=True, related_name='pagos_registrados'
+    )
+    fecha_actualizacion = models.DateTimeField(blank=True, null=True)
+    motivo_anulacion = models.TextField(blank=True, null=True)
 
     class Meta:
         #managed = False

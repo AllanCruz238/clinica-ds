@@ -84,7 +84,7 @@ def api_dashboard_recordatorios(request):
 
         citas_validas = estado_no_cancelado(citas_base)
 
-        pagos_base = Pagos.objects.select_related(
+        pagos_base = Pagos.objects.exclude(estado='anulado').select_related(
             'id_paciente',
             'id_cita',
             'id_tipo_pago'
@@ -127,7 +127,7 @@ def api_dashboard_recordatorios(request):
         tasa_cancelaciones = round((canceladas_mes / total_citas_mes) * 100, 2) if total_citas_mes else 0
 
         citas_con_pago_ids = list(
-            Pagos.objects.exclude(id_cita__isnull=True).values_list('id_cita_id', flat=True)
+            Pagos.objects.exclude(estado='anulado').exclude(id_cita__isnull=True).values_list('id_cita_id', flat=True)
         )
 
         citas_pasadas_sin_pago = estado_no_cancelado(

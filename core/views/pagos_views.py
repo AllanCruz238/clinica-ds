@@ -13,7 +13,7 @@ def pagos_json(request):
         'id_paciente',
         'id_cita',
         'id_tipo_pago'
-    ).order_by('-id_pago')
+    ).exclude(estado='anulado').order_by('-id_pago')
 
     busqueda = request.GET.get('search', '').strip()
     if busqueda:
@@ -36,7 +36,8 @@ def pagos_json(request):
             'monto': float(p.monto) if p.monto else 0,
             'fecha_pago': p.fecha_pago.strftime('%Y-%m-%d %H:%M') if p.fecha_pago else '',
             'referencia_pago': p.referencia_pago or '',
-            'observaciones': p.observaciones or ''
+            'observaciones': p.observaciones or '',
+            'estado': p.estado or 'pagado'
         })
 
     paginado = _aplicar_paginacion(request, data)
@@ -161,14 +162,18 @@ def crear_pago_json(request):
         if body.get('id_cita'):
             cita = Citas.objects.get(id_cita=body['id_cita'])
 
+        ahora = timezone.now()
         nuevo_pago = Pagos.objects.create(
             id_paciente=paciente,
             id_cita=cita,
             id_tipo_pago=tipo_pago,
             monto=body.get('monto', 0),
-            fecha_pago=timezone.now(),
+            fecha_pago=ahora,
             referencia_pago=body.get('referencia_pago', ''),
-            observaciones=body.get('observaciones', '')
+            observaciones=body.get('observaciones', ''),
+            estado='pagado',
+            registrado_por_id=request.session.get('usuario_id'),
+            fecha_actualizacion=ahora,
         )
 
         registrar_auditoria(
@@ -233,14 +238,28 @@ def eliminar_pago_json(request, id_pago):
         return JsonResponse({'ok': False, 'error': 'Método no permitido'}, status=405)
 
     try:
-        pago = Pagos.objects.get(id_pago=id_pago)
-        pago.delete()
+        body = {}
+        if request.body:
+            try:
+                body = json.loads(request.body)
+            except Exception:
+                body = {}
 
-        registrar_auditoria(request.session.get('usuario_id'), 'pagos', id_pago, 'eliminar', 'Pago eliminado')
+        pago = Pagos.objects.get(id_pago=id_pago)
+        # Anulación lógica: no se borra físicamente para conservar trazabilidad.
+        pago.estado = 'anulado'
+        pago.motivo_anulacion = (body.get('motivo') or '').strip()
+        pago.fecha_actualizacion = timezone.now()
+        pago.save()
+
+        registrar_auditoria(
+            request.session.get('usuario_id'), 'pagos', id_pago,
+            'anular', f"Pago anulado. Motivo: {pago.motivo_anulacion or 'No especificado'}"
+        )
 
         return JsonResponse({
             'ok': True,
-            'mensaje': 'Pago eliminado correctamente'
+            'mensaje': 'Pago anulado correctamente'
         }, json_dumps_params={'ensure_ascii': False})
 
     except Pagos.DoesNotExist:

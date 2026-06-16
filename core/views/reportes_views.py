@@ -33,6 +33,9 @@ def _datos_reporte_general():
     hoy = date.today()
     ahora = timezone.now()
 
+    # Los pagos anulados no cuentan como ingreso ni como "cita pagada".
+    pagos_validos = Pagos.objects.exclude(estado='anulado')
+
     total_pacientes = Pacientes.objects.filter(activo=1).count()
     total_pacientes_general = Pacientes.objects.count()
     total_usuarios = Usuarios.objects.count()
@@ -40,19 +43,19 @@ def _datos_reporte_general():
     total_doctores = Doctores.objects.count()
     doctores_activos = Doctores.objects.filter(activo=1).count()
     total_citas = Citas.objects.count()
-    total_pagos = Pagos.objects.count()
+    total_pagos = pagos_validos.count()
 
     citas_hoy = excluir_canceladas(Citas.objects.filter(fecha_cita=hoy)).count()
     citas_proximas_total = excluir_canceladas(Citas.objects.filter(fecha_cita__gte=hoy)).count()
 
-    ingresos_totales = float(Pagos.objects.aggregate(t=Sum('monto'))['t'] or 0)
+    ingresos_totales = float(pagos_validos.aggregate(t=Sum('monto'))['t'] or 0)
     pagos_del_mes = float(
-        Pagos.objects.filter(
+        pagos_validos.filter(
             fecha_pago__isnull=False, fecha_pago__year=hoy.year, fecha_pago__month=hoy.month
         ).aggregate(t=Sum('monto'))['t'] or 0
     )
     ingresos_semanales = float(
-        Pagos.objects.filter(
+        pagos_validos.filter(
             fecha_pago__isnull=False, fecha_pago__gte=ahora - timedelta(days=7)
         ).aggregate(t=Sum('monto'))['t'] or 0
     )
@@ -60,7 +63,7 @@ def _datos_reporte_general():
     promedio_pago = round(ingresos_totales / total_pagos, 2) if total_pagos else 0
 
     citas_con_pago_ids = list(
-        Pagos.objects.exclude(id_cita__isnull=True).values_list('id_cita_id', flat=True)
+        pagos_validos.exclude(id_cita__isnull=True).values_list('id_cita_id', flat=True)
     )
     citas_futuras_pendientes_pago = excluir_canceladas(
         Citas.objects.filter(fecha_cita__gte=hoy)
@@ -108,7 +111,7 @@ def _datos_reporte_general():
             'cantidad': int(r['cantidad'] or 0),
             'total': float(r['total'] or 0),
         }
-        for r in Pagos.objects.values('id_tipo_pago__nombre_tipo_pago')
+        for r in pagos_validos.values('id_tipo_pago__nombre_tipo_pago')
         .annotate(cantidad=Count('id_pago'), total=Sum('monto')).order_by('-total')
     ]
 
