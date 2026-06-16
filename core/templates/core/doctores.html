@@ -345,7 +345,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       cargarDoctores();
       cargarCatalogos();
-      setInterval(cargarDoctores, 1000);
+      setInterval(cargarDoctores, 60000);
       document.getElementById('searchInput').addEventListener('input', renderDoctores);
       document.getElementById('formDoctor').addEventListener('submit', guardarDoctor);
     });

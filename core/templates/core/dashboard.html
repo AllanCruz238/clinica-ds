@@ -500,7 +500,7 @@
   function iniciarActualizacionAutomatica() {
     cargarDashboard();
     if (intervaloDashboard) clearInterval(intervaloDashboard);
-    intervaloDashboard = setInterval(cargarDashboard, 1000);
+    intervaloDashboard = setInterval(cargarDashboard, 30000);
   }
 
   iniciarActualizacionAutomatica();
