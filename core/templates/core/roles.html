@@ -297,6 +297,12 @@
       actualizarResumen(data);
     }
 
+    function escapeHtml(valor) {
+      return String(valor ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
     function renderRoles(data) {
       const tbody = document.getElementById('tablaRoles');
       tbody.innerHTML = '';
@@ -308,8 +314,8 @@
         tbody.innerHTML += `
           <tr>
             <td>${r.id_rol}</td>
-            <td>${r.nombre_rol}</td>
-            <td>${r.descripcion || '-'}</td>
+            <td>${escapeHtml(r.nombre_rol)}</td>
+            <td>${escapeHtml(r.descripcion || '-')}</td>
             <td>${r.cantidad_usuarios}</td>
             <td class="${estadoClase}">${estadoTexto}</td>
             <td>

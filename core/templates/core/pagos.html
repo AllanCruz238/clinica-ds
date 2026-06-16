@@ -365,6 +365,12 @@
       actualizarResumen(data);
     }
 
+    function escapeHtml(valor) {
+      return String(valor ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
     function renderPagos(data) {
       const tbody = document.getElementById('tablaPagos');
       tbody.innerHTML = '';
@@ -382,13 +388,13 @@
         tbody.innerHTML += `
           <tr>
             <td>${p.id_pago}</td>
-            <td>${p.paciente}</td>
+            <td>${escapeHtml(p.paciente)}</td>
             <td>${p.id_cita || 'Sin cita'}</td>
-            <td>${p.tipo_pago}</td>
+            <td>${escapeHtml(p.tipo_pago)}</td>
             <td class="monto">Q${Number(p.monto).toFixed(2)}</td>
-            <td>${p.fecha_pago}</td>
-            <td>${p.referencia_pago || ''}</td>
-            <td>${p.observaciones || ''}</td>
+            <td>${escapeHtml(p.fecha_pago)}</td>
+            <td>${escapeHtml(p.referencia_pago || '')}</td>
+            <td>${escapeHtml(p.observaciones || '')}</td>
             <td>
               <div class="actions">
                 <button class="btn secondary" onclick="abrirEditarPago(${p.id_pago})">Editar</button>

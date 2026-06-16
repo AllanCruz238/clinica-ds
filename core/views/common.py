@@ -14,6 +14,7 @@ from django.middleware.csrf import get_token
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.utils import timezone
+from django.utils.html import escape
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 from docx import Document
@@ -41,6 +42,7 @@ from ..models import (
 
 __all__ = [
     'Q',
+    'escape',
     '_aplicar_paginacion',
     'Auditoria',
     'BLOQUEO_LOGIN_SEGUNDOS',

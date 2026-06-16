@@ -34,7 +34,7 @@ def admin_limpiar_recordatorios(request):
             error = str(e)
 
     filas_html = ''.join(
-        f'<tr><td>{f[0]}</td><td>{f[1]}</td><td>{f[2]}</td><td>{f[3]}</td><td>{f[4]}</td><td>{f[5]}</td></tr>'
+        f'<tr><td>{escape(f[0])}</td><td>{escape(f[1])}</td><td>{escape(f[2])}</td><td>{escape(f[3])}</td><td>{escape(f[4])}</td><td>{escape(f[5])}</td></tr>'
         for f in filas
     )
     csrf_token = get_token(request)
@@ -214,10 +214,10 @@ def listar_recordatorios_whatsapp(request):
             wa_url = f"https://wa.me/{numero_limpio}?text={quote(str(mensaje))}"
             html += f"""
             <div class="card">
-                <div class="numero">Número: {destinatario}</div>
-                <div class="fecha">Fecha programada: {fecha_programada}</div>
-                <div class="mensaje">{mensaje}</div>
-                <a class="btn" target="_blank" href="{wa_url}">Abrir WhatsApp</a>
+                <div class="numero">Número: {escape(destinatario)}</div>
+                <div class="fecha">Fecha programada: {escape(fecha_programada)}</div>
+                <div class="mensaje">{escape(mensaje)}</div>
+                <a class="btn" target="_blank" href="{escape(wa_url)}">Abrir WhatsApp</a>
                 <button type="button" class="btn secondary js-wa-abrir" data-url="/recordatorios/whatsapp/{id_recordatorio}/abrir/">Abrir y marcar enviado</button>
             </div>
             """
@@ -234,10 +234,10 @@ def listar_recordatorios_whatsapp(request):
         hora_inicio = _hora_como_time(cita.hora_inicio)
         html += f"""
         <div class="card">
-            <div class="numero">Paciente: {_nombre_paciente_cita(cita)} | Número: {numero}</div>
-            <div class="fecha">Cita: {cita.fecha_cita} {hora_inicio.strftime('%H:%M')}</div>
-            <div class="mensaje">{mensaje}</div>
-            <a class="btn" target="_blank" href="{wa_url}">Enviar WhatsApp manual</a>
+            <div class="numero">Paciente: {escape(_nombre_paciente_cita(cita))} | Número: {escape(numero)}</div>
+            <div class="fecha">Cita: {escape(cita.fecha_cita)} {hora_inicio.strftime('%H:%M')}</div>
+            <div class="mensaje">{escape(mensaje)}</div>
+            <a class="btn" target="_blank" href="{escape(wa_url)}">Enviar WhatsApp manual</a>
             <button type="button" class="btn secondary js-wa-abrir" data-url="/recordatorios/whatsapp/cita/{cita.id_cita}/abrir/">Abrir y registrar</button>
         </div>
         """

@@ -426,6 +426,12 @@
       document.getElementById('doctor_telefono').value = usuario.telefono || '';
     }
 
+    function escapeHtml(valor) {
+      return String(valor ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
     function renderDoctores() {
       const tbody = document.getElementById('tablaDoctores');
       const empty = document.getElementById('emptyState');
@@ -450,11 +456,11 @@
         tbody.innerHTML += `
           <tr>
             <td>${d.id_doctor}</td>
-            <td>${d.doctor || '-'}</td>
-            <td>${d.correo || '-'}</td>
-            <td>${d.telefono || '-'}</td>
-            <td>${d.especialidad || '-'}</td>
-            <td>${d.numero_colegiado || '-'}</td>
+            <td>${escapeHtml(d.doctor || '-')}</td>
+            <td>${escapeHtml(d.correo || '-')}</td>
+            <td>${escapeHtml(d.telefono || '-')}</td>
+            <td>${escapeHtml(d.especialidad || '-')}</td>
+            <td>${escapeHtml(d.numero_colegiado || '-')}</td>
             <td><span style="display:inline-block;width:22px;height:22px;border-radius:7px;background:${d.color_agenda || '#38bdf8'};border:1px solid var(--bmd);"></span></td>
             <td><span class="${activo ? 'estado-activo' : 'estado-inactivo'}">${activo ? 'Activo' : 'Inactivo'}</span></td>
             <td>

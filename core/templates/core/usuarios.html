@@ -346,6 +346,12 @@
       actualizarResumen(data);
     }
 
+    function escapeHtml(valor) {
+      return String(valor ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
     function renderUsuarios(data) {
       const tbody = document.getElementById('tablaUsuarios');
       tbody.innerHTML = '';
@@ -359,13 +365,13 @@
         tbody.innerHTML += `
           <tr>
             <td>${u.id_usuario}</td>
-            <td>${u.username}</td>
-            <td>${nombreCompleto || '-'}</td>
-            <td>${u.rol || '-'}</td>
-            <td>${u.correo || '-'}</td>
-            <td>${u.telefono || '-'}</td>
-            <td>${u.fecha_creacion || '-'}</td>
-            <td>${u.ultimo_acceso || '-'}</td>
+            <td>${escapeHtml(u.username)}</td>
+            <td>${escapeHtml(nombreCompleto || '-')}</td>
+            <td>${escapeHtml(u.rol || '-')}</td>
+            <td>${escapeHtml(u.correo || '-')}</td>
+            <td>${escapeHtml(u.telefono || '-')}</td>
+            <td>${escapeHtml(u.fecha_creacion || '-')}</td>
+            <td>${escapeHtml(u.ultimo_acceso || '-')}</td>
             <td class="${estadoClase}">${estadoTexto}</td>
             <td>
               <button class="btn secondary" onclick='editarUsuario(${JSON.stringify(u)})'>
